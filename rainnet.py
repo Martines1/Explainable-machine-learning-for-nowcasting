@@ -1,8 +1,8 @@
 from keras.models import *
 from keras.layers import *
 
-def rainnet(input_shape=(928, 928, 4), mode="regression"):
 
+def rainnet(input_shape=(928, 928, 4), mode="regression"):
     """
     The function for building the RainNet (v1.0) model from scratch
     using Keras functional API.
@@ -80,7 +80,7 @@ def rainnet(input_shape=(928, 928, 4), mode="regression"):
     conv9 = Conv2D(64, 3, padding='same', kernel_initializer='he_normal')(conv9)
     conv9 = Activation("relu")(conv9)
     conv9 = Conv2D(2, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
-    
+
     if mode == "regression":
         outputs = Conv2D(1, 1, activation='linear')(conv9)
     elif mode == "segmentation":

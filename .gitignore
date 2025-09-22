@@ -1,0 +1,6 @@
+*.png
+*.gif
+.idea
+__pycache__/
+*.pyc
+model/
