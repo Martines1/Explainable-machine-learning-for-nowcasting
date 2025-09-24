@@ -18,9 +18,10 @@ def pad_to_shape(array, from_shape=900, to_shape=928, how="mirror"):
     padding = int((to_shape - from_shape) / 2)
     array_padded = None
     if how == "zero":
-        array_padded = np.pad(array, ((0,0),(padding,padding),(padding,padding),(0,0)), mode="constant", constant_values=0)
+        array_padded = np.pad(array, ((0, 0), (padding, padding), (padding, padding), (0, 0)), mode="constant",
+                              constant_values=0)
     elif how == "mirror":
-        array_padded = np.pad(array, ((0,0),(padding,padding),(padding,padding),(0,0)), mode="reflect")
+        array_padded = np.pad(array, ((0, 0), (padding, padding), (padding, padding), (0, 0)), mode="reflect")
     return array_padded
 
 

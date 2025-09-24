@@ -10,7 +10,6 @@ import utils
 from rainnet import rainnet
 from utils import data_preprocessing, data_postprocessing
 
-
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 

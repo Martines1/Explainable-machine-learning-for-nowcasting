@@ -89,4 +89,3 @@ def rainnet(input_shape=(928, 928, 4), mode="regression"):
     model = Model(inputs=inputs, outputs=outputs)
 
     return model
-
