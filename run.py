@@ -6,7 +6,6 @@ from rainnet import rainnet
 from utils import data_preprocessing, data_postprocessing
 import tensorflow as tf
 
-tf.config.run_functions_eagerly(False)
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 
@@ -27,7 +26,6 @@ def _parse_ts(fname: str) -> str:
     return m.group(1)
 
 
-@tf.function(jit_compile=True)
 def infer(model, x):
     return model(x, training=False)
 
@@ -55,3 +53,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
