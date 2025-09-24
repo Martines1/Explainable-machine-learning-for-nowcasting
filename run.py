@@ -1,10 +1,15 @@
+import os
+
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 import re
 from pathlib import Path
 import numpy as np
 import utils
 from rainnet import rainnet
 from utils import data_preprocessing, data_postprocessing
-import tensorflow as tf
+
 
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
@@ -26,8 +31,10 @@ def _parse_ts(fname: str) -> str:
     return m.group(1)
 
 
-def infer(model, x):
-    return model(x, training=False)
+def infer_with_predict(model, x_np: np.ndarray) -> np.ndarray:
+    _ = model.predict(x_np, verbose=0)
+    y = model.predict(x_np, verbose=0)
+    return y
 
 
 def main():
@@ -42,10 +49,11 @@ def main():
     for count, image in enumerate(X_raw):
         utils.show_and_save(image, f'input_{count}', f'Input t-{15 - count * 5} (mm/5min)')
     X = data_preprocessing(X_raw)
+    assert X.dtype == np.float32
     model = rainnet()
     model.load_weights("model/rainnet_weights.h5")
-    xt = tf.convert_to_tensor(X, dtype=tf.float32)
-    Y_pred = infer(model, xt).numpy()
+    model.compile(jit_compile=True)
+    Y_pred = infer_with_predict(model, X)
     Y_mm = data_postprocessing(Y_pred)[0]
     utils.show_and_save(Y_mm, "OUT", "t+5 RainNet (mm/5min)")
     utils.create_gif()
@@ -53,4 +61,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

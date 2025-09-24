@@ -2,8 +2,6 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from wradlib import io as wio
-import cartopy.crs as ccrs
-from pyproj import CRS
 from pathlib import Path
 import os
 
@@ -20,10 +18,9 @@ def pad_to_shape(array, from_shape=900, to_shape=928, how="mirror"):
     padding = int((to_shape - from_shape) / 2)
     array_padded = None
     if how == "zero":
-        array_padded = np.pad(array, ((0, 0), (padding, padding), (padding, padding), (0, 0)), mode="constant",
-                              constant_values=0)
+        array_padded = np.pad(array, ((0,0),(padding,padding),(padding,padding),(0,0)), mode="constant", constant_values=0)
     elif how == "mirror":
-        array_padded = np.pad(array, ((0, 0), (padding, padding), (padding, padding), (0, 0)), mode="reflect")
+        array_padded = np.pad(array, ((0,0),(padding,padding),(padding,padding),(0,0)), mode="reflect")
     return array_padded
 
 
@@ -108,35 +105,6 @@ def read_ry_radolan(path: Path) -> np.ndarray:
     if arr.shape != (900, 900):
         raise ValueError(f"Expected 900x900, got {arr.shape} for {path}")
     return arr
-
-
-def show_radolan_one(path: Path):
-    RADOLAN_CRS = CRS.from_proj4(
-        "+proj=stere +lat_0=90 +lat_ts=60 +lon_0=10 +k=1 "
-        "+x_0=0 +y_0=0 +a=6370040 +b=6370040 +units=m +no_defs"
-    )
-    ds = wio.open_radolan_dataset(str(path))
-    da = ds[list(ds.data_vars)[0]].squeeze().astype("float32")
-    da = da.where(da > 0)
-    da = da.rio.write_crs(RADOLAN_CRS)
-    da = da.rio.write_nodata(np.nan)
-    da_ll = da.rio.reproject("EPSG:4326", nodata=np.nan, resampling=0)
-
-    fig = plt.figure(figsize=(7, 7))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    im = da_ll.plot.imshow(
-        ax=ax, transform=ccrs.PlateCarree(),
-        robust=True, cbar_kwargs={"label": "mm / 5 min"}
-    )
-    ax.coastlines(resolution="10m", linewidth=0.8)
-    import cartopy.feature as cfeature
-    ax.add_feature(cfeature.BORDERS, linewidth=0.5)
-    gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="0.6", alpha=0.6)
-    gl.right_labels = False
-    gl.top_labels = False
-    ax.set_title(path.name)
-    plt.tight_layout()
-    plt.show()
 
 
 def getData():
