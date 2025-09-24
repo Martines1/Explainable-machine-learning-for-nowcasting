@@ -1,5 +1,5 @@
-from keras.models import *
-from keras.layers import *
+from tensorflow.keras.models import *
+from tensorflow.keras.layers import *
 
 
 def rainnet(input_shape=(928, 928, 4), mode="regression"):
@@ -89,3 +89,4 @@ def rainnet(input_shape=(928, 928, 4), mode="regression"):
     model = Model(inputs=inputs, outputs=outputs)
 
     return model
+
