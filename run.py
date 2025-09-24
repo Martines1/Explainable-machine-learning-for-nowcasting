@@ -1,7 +1,11 @@
 import os
 
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "8")
+os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "8")
+os.environ.setdefault("KMP_BLOCKTIME", "0")
 
 import re
 from pathlib import Path
@@ -30,12 +34,6 @@ def _parse_ts(fname: str) -> str:
     return m.group(1)
 
 
-def infer_with_predict(model, x_np: np.ndarray) -> np.ndarray:
-    _ = model.predict(x_np, verbose=0)
-    y = model.predict(x_np, verbose=0)
-    return y
-
-
 def main():
     file_paths = [DATA_DIR / f for f in FILES]
     file_paths = sorted(file_paths, key=lambda f: _parse_ts(f.name))
@@ -51,8 +49,7 @@ def main():
     assert X.dtype == np.float32
     model = rainnet()
     model.load_weights("model/rainnet_weights.h5")
-    model.compile(jit_compile=True)
-    Y_pred = infer_with_predict(model, X)
+    Y_pred = model.predict(X)
     Y_mm = data_postprocessing(Y_pred)[0]
     utils.show_and_save(Y_mm, "OUT", "t+5 RainNet (mm/5min)")
     utils.create_gif()
