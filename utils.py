@@ -4,6 +4,16 @@ import matplotlib.pyplot as plt
 from wradlib import io as wio
 from pathlib import Path
 import os
+import re
+
+
+def parse_ts(fname: str) -> str:
+    _TIME_RE = re.compile(r".*-(\d{10})-dwd---bin(?:\.\w+)?$")
+    m = _TIME_RE.match(fname)
+    if not m:
+        print(f"Warning: can't parse time from file name {fname}")
+        return fname
+    return m.group(1)
 
 
 def Scaler(array):
@@ -48,7 +58,7 @@ def data_postprocessing(nwcst):
     return nwcst
 
 
-def show_and_save(img, name, title):
+def show_and_save(img, name, title, show=False):
     img = np.where(img > 1e-2, img, 0.0)
     pos = img[img > 0]
     if pos.size:
@@ -74,7 +84,8 @@ def show_and_save(img, name, title):
     plt.tight_layout()
 
     fig.savefig(f"{name}.png", dpi=150)
-    plt.show()
+    if show:
+        plt.show()
 
 
 def create_gif():
