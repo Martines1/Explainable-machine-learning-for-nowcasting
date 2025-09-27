@@ -1,91 +1,119 @@
-from tensorflow.keras.models import *
-from tensorflow.keras.layers import *
+import torch
+import torch.nn as nn
 
 
-def rainnet(input_shape=(928, 928, 4), mode="regression"):
+class RainNet(nn.Module):
     """
-    The function for building the RainNet (v1.0) model from scratch
-    using Keras functional API.
-
-    Parameters:
-    input size: tuple(W x H x C), where W (width) and H (height)
-    describe spatial dimensions of input data (e.g., 928x928 for RY data);
-    and C (channels) describes temporal (depth) dimension of 
-    input data (e.g., 4 means accounting four latest radar scans at time
-    t-15, t-10, t-5 minutes, and t)
-    
-    mode: "regression" (default) or "segmentation". 
-    For "regression" mode the last activation function is linear, 
-    while for "segmentation" it is sigmoid.
-    To train RainNet to predict continuous precipitation intensities use 
-    "regression" mode. 
-    RainNet could be trained to predict the exceedance of specific intensity 
-    thresholds. For that purpose, use "segmentation" mode.
+    PyTorch equivalent Keras RainNet (v1.0).
+    Input: NCHW (N, 4, H, W)   -- Keras version of (H, W, C)
     """
 
-    inputs = Input(input_shape)
+    def __init__(self, in_channels: int = 4):
+        super().__init__()
 
-    conv1f = Conv2D(64, 3, padding='same', kernel_initializer='he_normal')(inputs)
-    conv1f = Activation("relu")(conv1f)
-    conv1s = Conv2D(64, 3, padding='same', kernel_initializer='he_normal')(conv1f)
-    conv1s = Activation("relu")(conv1s)
-    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1s)
+        # --- Encoder ---
+        self.conv1f = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=True)
+        self.conv1s = nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=True)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    conv2f = Conv2D(128, 3, padding='same', kernel_initializer='he_normal')(pool1)
-    conv2f = Activation("relu")(conv2f)
-    conv2s = Conv2D(128, 3, padding='same', kernel_initializer='he_normal')(conv2f)
-    conv2s = Activation("relu")(conv2s)
-    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2s)
+        self.conv2f = nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=True)
+        self.conv2s = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    conv3f = Conv2D(256, 3, padding='same', kernel_initializer='he_normal')(pool2)
-    conv3f = Activation("relu")(conv3f)
-    conv3s = Conv2D(256, 3, padding='same', kernel_initializer='he_normal')(conv3f)
-    conv3s = Activation("relu")(conv3s)
-    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3s)
+        self.conv3f = nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=True)
+        self.conv3s = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=True)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    conv4f = Conv2D(512, 3, padding='same', kernel_initializer='he_normal')(pool3)
-    conv4f = Activation("relu")(conv4f)
-    conv4s = Conv2D(512, 3, padding='same', kernel_initializer='he_normal')(conv4f)
-    conv4s = Activation("relu")(conv4s)
-    drop4 = Dropout(0.5)(conv4s)
-    pool4 = MaxPooling2D(pool_size=(2, 2))(drop4)
+        self.conv4f = nn.Conv2d(256, 512, kernel_size=3, padding=1, bias=True)
+        self.conv4s = nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=True)
+        self.drop4 = nn.Dropout(p=0.5)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    conv5f = Conv2D(1024, 3, padding='same', kernel_initializer='he_normal')(pool4)
-    conv5f = Activation("relu")(conv5f)
-    conv5s = Conv2D(1024, 3, padding='same', kernel_initializer='he_normal')(conv5f)
-    conv5s = Activation("relu")(conv5s)
-    drop5 = Dropout(0.5)(conv5s)
+        self.conv5f = nn.Conv2d(512, 1024, kernel_size=3, padding=1, bias=True)
+        self.conv5s = nn.Conv2d(1024, 1024, kernel_size=3, padding=1, bias=True)
+        self.drop5 = nn.Dropout(p=0.5)
 
-    up6 = concatenate([UpSampling2D(size=(2, 2))(drop5), conv4s], axis=3)
-    conv6 = Conv2D(512, 3, padding='same', kernel_initializer='he_normal')(up6)
-    conv6 = Activation("relu")(conv6)
-    conv6 = Conv2D(512, 3, padding='same', kernel_initializer='he_normal')(conv6)
-    conv6 = Activation("relu")(conv6)
+        # --- Decoder ---
+        self.up6 = nn.Upsample(scale_factor=2, mode='nearest')
+        self.conv6f = nn.Conv2d(1024 + 512, 512, kernel_size=3, padding=1, bias=True)
+        self.conv6s = nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=True)
 
-    up7 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3s], axis=3)
-    conv7 = Conv2D(256, 3, padding='same', kernel_initializer='he_normal')(up7)
-    conv7 = Activation("relu")(conv7)
-    conv7 = Conv2D(256, 3, padding='same', kernel_initializer='he_normal')(conv7)
-    conv7 = Activation("relu")(conv7)
+        self.up7 = nn.Upsample(scale_factor=2, mode='nearest')
+        self.conv7f = nn.Conv2d(512 + 256, 256, kernel_size=3, padding=1, bias=True)
+        self.conv7s = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=True)
 
-    up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2s], axis=3)
-    conv8 = Conv2D(128, 3, padding='same', kernel_initializer='he_normal')(up8)
-    conv8 = Activation("relu")(conv8)
-    conv8 = Conv2D(128, 3, padding='same', kernel_initializer='he_normal')(conv8)
-    conv8 = Activation("relu")(conv8)
+        self.up8 = nn.Upsample(scale_factor=2, mode='nearest')
+        self.conv8f = nn.Conv2d(256 + 128, 128, kernel_size=3, padding=1, bias=True)
+        self.conv8s = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True)
 
-    up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv1s], axis=3)
-    conv9 = Conv2D(64, 3, padding='same', kernel_initializer='he_normal')(up9)
-    conv9 = Activation("relu")(conv9)
-    conv9 = Conv2D(64, 3, padding='same', kernel_initializer='he_normal')(conv9)
-    conv9 = Activation("relu")(conv9)
-    conv9 = Conv2D(2, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
+        self.up9 = nn.Upsample(scale_factor=2, mode='nearest')
+        self.conv9f = nn.Conv2d(128 + 64, 64, kernel_size=3, padding=1, bias=True)
+        self.conv9s = nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=True)
+        self.conv9 = nn.Conv2d(64, 2, kernel_size=3, padding=1, bias=True)
 
-    if mode == "regression":
-        outputs = Conv2D(1, 1, activation='linear')(conv9)
-    elif mode == "segmentation":
-        outputs = Conv2D(1, 1, activation='sigmoid')(conv9)
+        self.out_conv = nn.Conv2d(2, 1, kernel_size=1, padding=0, bias=True)
+        self.relu = nn.ReLU(inplace=True)
+        self.sigmoid = nn.Sigmoid()
 
-    model = Model(inputs=inputs, outputs=outputs)
+    def forward(self, x):
+        # Encoder
+        conv1f = self.relu(self.conv1f(x))
+        conv1s = self.relu(self.conv1s(conv1f))
+        pool1 = self.pool1(conv1s)
 
-    return model
+        conv2f = self.relu(self.conv2f(pool1))
+        conv2s = self.relu(self.conv2s(conv2f))
+        pool2 = self.pool2(conv2s)
+
+        conv3f = self.relu(self.conv3f(pool2))
+        conv3s = self.relu(self.conv3s(conv3f))
+        pool3 = self.pool3(conv3s)
+
+        conv4f = self.relu(self.conv4f(pool3))
+        conv4s = self.relu(self.conv4s(conv4f))
+        drop4 = self.drop4(conv4s)
+        pool4 = self.pool4(drop4)
+
+        conv5f = self.relu(self.conv5f(pool4))
+        conv5s = self.relu(self.conv5s(conv5f))
+        drop5 = self.drop5(conv5s)
+
+        # Decoder
+        up6 = self.up6(drop5)
+        up6 = torch.cat([up6, conv4s], dim=1)
+        conv6 = self.relu(self.conv6f(up6))
+        conv6 = self.relu(self.conv6s(conv6))
+
+        up7 = self.up7(conv6)
+        up7 = torch.cat([up7, conv3s], dim=1)
+        conv7 = self.relu(self.conv7f(up7))
+        conv7 = self.relu(self.conv7s(conv7))
+
+        up8 = self.up8(conv7)
+        up8 = torch.cat([up8, conv2s], dim=1)
+        conv8 = self.relu(self.conv8f(up8))
+        conv8 = self.relu(self.conv8s(conv8))
+
+        up9 = self.up9(conv8)
+        up9 = torch.cat([up9, conv1s], dim=1)
+        conv9 = self.relu(self.conv9f(up9))
+        conv9 = self.relu(self.conv9s(conv9))
+        conv9 = self.relu(self.conv9(conv9))
+
+        out = self.out_conv(conv9)
+        return out
+
+    def convs_in_keras_order(self):
+        names = [
+            "conv1f", "conv1s",
+            "conv2f", "conv2s",
+            "conv3f", "conv3s",
+            "conv4f", "conv4s",
+            "conv5f", "conv5s",
+            "conv6f", "conv6s",
+            "conv7f", "conv7s",
+            "conv8f", "conv8s",
+            "conv9f", "conv9s",
+            "conv9", "out_conv",
+        ]
+        return [getattr(self, n) for n in names]

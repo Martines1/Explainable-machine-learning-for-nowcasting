@@ -83,16 +83,16 @@ def show_and_save(img, name, title, show=False):
     ax.set_ylabel("y [pixel]")
     plt.tight_layout()
 
-    fig.savefig(f"{name}.png", dpi=150)
+    fig.savefig(f"output/{name}.png", dpi=150)
     if show:
         plt.show()
 
 
 def create_gif():
-    files = ["input_0.png", "input_1.png", "input_2.png", "input_3.png", "OUT.png"]
+    files = ["output/input_0.png", "output/input_1.png", "output/input_2.png", "output/input_3.png", "output/OUT.png"]
     frames = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in files]
     frames[0].save(
-        "out.gif",
+        "output/out.gif",
         save_all=True,
         append_images=frames[1:],
         duration=1200,
@@ -103,16 +103,18 @@ def create_gif():
 
 
 def read_ry_radolan(path: Path) -> np.ndarray:
-    # show_radolan_one(path)
     data, attrs = wio.read_radolan_composite(str(path), missing=None)
     nodata = attrs.get("nodataflag", -9999)
     sec_idx = attrs.get("secondary")
 
-    arr = data.copy()
+    arr = data.astype("float32", copy=True)
+
     if sec_idx is not None and np.size(sec_idx) > 0:
         arr.flat[sec_idx] = nodata
+
     marr = np.ma.masked_equal(arr, nodata)
     arr = np.ma.filled(marr, 0.0).astype("float32")
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
     if arr.shape != (900, 900):
         raise ValueError(f"Expected 900x900, got {arr.shape} for {path}")
