@@ -88,7 +88,7 @@ def main():
 
     target = RegressionTarget("topk", 0.1)
     gradcam = GradCam(model, x_t, method="gradcam++", module="conv8f")
-    cams = gradcam.run_per_channel(target)
+    cams = gradcam.test_one_channel(target)
     labels = ["t-15", "t-10", "t-5", "t"]
     for i, cam in enumerate(cams):
         gradcam.overlay_on_input(X_raw[i], cam, f"OVERLAY_{labels[i]}")

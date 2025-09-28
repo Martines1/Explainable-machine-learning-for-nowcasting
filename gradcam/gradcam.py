@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch
 import numpy as np
 
+import utils
 from gradcam.regression_target import RegressionTarget
 
 
@@ -97,21 +98,43 @@ class GradCam:
         plt.close(fig)
 
     def _pred_to_rad(self, pred, from_shape=928, to_shape=900):
-            if hasattr(pred, "detach"):
-                pred = pred.detach().cpu().numpy()
-            padding = int((from_shape - to_shape) / 2)
-            return pred[padding:padding + to_shape, padding:padding + to_shape].copy()
+        if hasattr(pred, "detach"):
+            pred = pred.detach().cpu().numpy()
+        padding = int((from_shape - to_shape) / 2)
+        return pred[padding:padding + to_shape, padding:padding + to_shape].copy()
 
     def run_per_channel(self, target: RegressionTarget, bleed=0.05, aug_smooth: bool = False) -> list:
         self._disable_inplace_relu()
         cams = []
         for c in range(self.input.size(1)):
-            print(f"Running for channel {c+1}!")
+            print(f"Running for channel {c + 1}!")
             self.cam_algo = self._get_method()
             x_iso = self._build_isolated_input(self.input, c, bleed=bleed)
             gray = self.cam_algo(input_tensor=x_iso, targets=[target], aug_smooth=aug_smooth, eigen_smooth=False)
             cams.append(gray[0])
-            self._save_cam(gray[0], f"cam_{c+1}", f'channel{c+1}')
+            self._save_cam(gray[0], f"cam_{c + 1}", f'channel{c + 1}')
+        return cams
+
+    def _build_single_input(self, x_nchw: torch.Tensor, c, bleed) -> torch.Tensor:
+        device = x_nchw.device
+        baseline = torch.log(torch.tensor(0.01, dtype=x_nchw.dtype, device=device))
+        x_iso = torch.empty_like(x_nchw, device=device, dtype=x_nchw.dtype)
+        x_iso[:] = baseline
+        if bleed > 0.0:
+            x_iso += bleed * (x_nchw - baseline)
+        x_iso[:, c, :, :] = x_nchw[:, 0, :, :]  # always use channel 0
+        return x_iso
+
+    def test_one_channel(self, target: RegressionTarget, bleed=0.0, aug_smooth: bool = False) -> list:
+        self._disable_inplace_relu()
+        cams = []
+        for c in range(self.input.size(1)):
+            print(f"Running for channel 0!")
+            self.cam_algo = self._get_method()
+            x_iso = self._build_single_input(self.input, c, bleed=bleed)
+            gray = self.cam_algo(input_tensor=x_iso, targets=[target], aug_smooth=aug_smooth, eigen_smooth=False)
+            cams.append(gray[0])
+            self._save_cam(gray[0], f"test_cam_{c + 1}", f'channel{0}')
         return cams
 
     def overlay_on_input(self, base_img_mm, result_cam, title: str = "Grad-CAM overlay"):
