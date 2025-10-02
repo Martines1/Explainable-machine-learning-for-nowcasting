@@ -1,18 +1,14 @@
 from matplotlib import pyplot as plt
-from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, EigenCAM, LayerCAM, HiResCAM
+from pytorch_grad_cam import GradCAMPlusPlus
 import torch.nn as nn
 import torch
 import numpy as np
-
-import utils
 from gradcam.regression_target import RegressionTarget
 
 
 class GradCam:
 
-    def __init__(self, model, inputArray,
-                 method, module=None):
-        self.method = method
+    def __init__(self, model, inputArray, module=None):
         self.model = model
         if module is None:
             self.module = self._get_last_layer()
@@ -22,16 +18,7 @@ class GradCam:
         self.cam_algo = self._get_method()
 
     def _get_method(self):
-        if self.method == "gradcam++":
-            algo = GradCAMPlusPlus(model=self.model, target_layers=[self.module])
-        elif self.method == "hires":
-            algo = HiResCAM(model=self.model, target_layers=[self.module])
-        elif self.method == "layercam":
-            algo = LayerCAM(model=self.model, target_layers=[self.module])
-        elif self.method == "eigen":
-            algo = EigenCAM(model=self.model, target_layers=[self.module])
-        else:
-            algo = GradCAM(model=self.model, target_layers=[self.module])
+        algo = GradCAMPlusPlus(model=self.model, target_layers=[self.module])
         try:
             algo.relu = False
         except AttributeError:

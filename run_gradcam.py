@@ -87,7 +87,7 @@ def main():
     x_t = x_t.to(device)
 
     target = RegressionTarget("topk", 0.1)
-    gradcam = GradCam(model, x_t, method="gradcam++", module="conv8f")
+    gradcam = GradCam(model, x_t, module="conv8f")
     cams = gradcam.test_one_channel(target)
     labels = ["t-15", "t-10", "t-5", "t"]
     for i, cam in enumerate(cams):
