@@ -1,10 +1,9 @@
 from pathlib import Path
 import numpy as np
 import torch
-
+import cv2
+from optical_flow import optical_flow
 import utils
-from gradcam.gradcam import GradCam
-from gradcam.regression_target import RegressionTarget
 from utils import data_preprocessing, data_postprocessing
 from rainnet import RainNet
 
@@ -91,6 +90,10 @@ def main():
     Y_mm = data_postprocessing(Y_pred)[0]
     utils.show_and_save(Y_mm, "OUT", "Prediction (mm/5min)")
     utils.create_gif()
+
+    scans.append(Y_mm)
+    good0, good1 = optical_flow.calculate("output/input_2.png", "output/OUT.png")
+    optical_flow.draw("output/OUT.png", good0, good1)
 
 
 if __name__ == "__main__":

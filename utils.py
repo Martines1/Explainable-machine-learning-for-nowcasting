@@ -58,7 +58,7 @@ def data_postprocessing(nwcst):
     return nwcst
 
 
-def show_and_save(img, name, title, show=False):
+def show_and_save(img, name, title, show=False, bar=False):
     img = np.where(img > 1e-2, img, 0.0)
     pos = img[img > 0]
     if pos.size:
@@ -76,11 +76,17 @@ def show_and_save(img, name, title, show=False):
         vmax=vmax,
         interpolation="nearest"
     )
-    cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cb.set_label("mm / 5 min")
-    ax.set_title(title)
-    ax.set_xlabel("x [pixel]")
-    ax.set_ylabel("y [pixel]")
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_axis_off()
+
+    if bar:
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label("mm / 5 min")
+        ax.set_title(title)
+        ax.set_xlabel("x [pixel]")
+        ax.set_ylabel("y [pixel]")
     plt.tight_layout()
 
     fig.savefig(f"output/{name}.png", dpi=150)
