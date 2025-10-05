@@ -1,9 +1,8 @@
 from pathlib import Path
 import numpy as np
 import torch
-import cv2
-from optical_flow import optical_flow
 import utils
+from optical_flow.optical_flow import OpticalFlow
 from utils import data_preprocessing, data_postprocessing
 from rainnet import RainNet
 
@@ -92,8 +91,9 @@ def main():
     utils.create_gif()
 
     scans.append(Y_mm)
-    good0, good1 = optical_flow.calculate("output/input_2.png", "output/OUT.png")
-    optical_flow.draw("output/OUT.png", good0, good1)
+    of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
+    good0, good1 = of.calculate()
+    of.draw("output/OUT.png", good0, good1)
 
 
 if __name__ == "__main__":
