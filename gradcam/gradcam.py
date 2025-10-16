@@ -133,7 +133,6 @@ class GradCam:
         vmax = np.percentile(img[img > 0], 99) if np.any(img > 0) else 1.0
         vmax = max(vmax, 0.5)
 
-        # --- normalizácia CAM na 99. percentil ---
         if np.any(result_cam > 0):
             vmin, vhigh = np.percentile(result_cam, [1, 99])
             cam_norm = np.clip((result_cam - vmin) / (vhigh - vmin + 1e-8), 0, 1)
@@ -147,8 +146,6 @@ class GradCam:
                   vmin=0.0,
                   vmax=vmax,
                   interpolation="nearest")
-
-        # použijeme normalizovaný CAM
         ax.imshow(cam_norm,
                   origin="lower",
                   cmap="Reds",
