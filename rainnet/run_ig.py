@@ -2,6 +2,8 @@ from pathlib import Path
 import numpy as np
 import torch
 import utils
+from ROI.ROI import ROI
+from ROI.ROI_IG import RegressionTargetROI
 from utils import data_preprocessing, data_postprocessing
 from rainnet import RainNet
 
@@ -67,11 +69,16 @@ def main():
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
 
     for count, image in enumerate(X_raw):
-        utils.show_and_save(image, f'input_{count}', f'Input t-{15 - count * 5} (mm/5min)')
+        utils.show_and_save(image, f'input_{count}')
 
     X = data_preprocessing(X_raw)[0]
     assert X.dtype == np.float32
-    target = RegressionTargetIG(mode="mean")
+    # target = RegressionTargetIG(mode="mean")
+
+    roi = ROI("output/OUT.png", radius=8)
+    roi.show_image()
+    mask = roi.get_mask()
+    target = RegressionTargetROI(torch.from_numpy(mask), mode="mean")
 
     baseline = data_preprocessing(np.zeros_like(X_raw))[0]
     baseline_chw = np.moveaxis(baseline, -1, 0).astype(np.float32)

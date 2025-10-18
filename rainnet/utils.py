@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+from matplotlib import colors, cm
 from wradlib import io as wio
 from pathlib import Path
 import os
@@ -53,45 +54,29 @@ def data_postprocessing(nwcst):
     if nwcst.ndim == 4:
         nwcst = nwcst[..., 0]
     nwcst = invScaler(nwcst)
-    nwcst = pred_to_rad(nwcst)
+    # nwcst = pred_to_rad(nwcst)
     nwcst = np.where(nwcst > 0, nwcst, 0)
     return nwcst
 
 
-def show_and_save(img, name, title, show=False, bar=False):
+def show_and_save(img, name):
+    Path("output").mkdir(parents=True, exist_ok=True)
+
     img = np.where(img > 1e-2, img, 0.0)
     pos = img[img > 0]
     if pos.size:
-        vmax = float(np.percentile(pos, 99))
-        vmax = max(vmax, 0.5)
+        vmax = float(max(np.percentile(pos, 99), 0.5))
     else:
         vmax = 1.0
 
-    fig, ax = plt.subplots(figsize=(6, 6))
-    im = ax.imshow(
-        np.ma.masked_less_equal(img, 0.0),
-        origin="lower",
-        cmap="viridis",
-        vmin=0.0,
-        vmax=vmax,
-        interpolation="nearest"
-    )
+    norm = colors.Normalize(vmin=0.0, vmax=vmax, clip=True)
+    cmap = cm.get_cmap("viridis")
+    rgba = cmap(norm(img))
+    mask0 = (img == 0.0)
+    rgba[mask0, :3] = 1.0
+    rgba[mask0, 3] = 1.0
 
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_axis_off()
-
-    if bar:
-        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cb.set_label("mm / 5 min")
-        ax.set_title(title)
-        ax.set_xlabel("x [pixel]")
-        ax.set_ylabel("y [pixel]")
-    plt.tight_layout()
-
-    fig.savefig(f"output/{name}.png", dpi=150)
-    if show:
-        plt.show()
+    plt.imsave(f"output/{name}.png", rgba)
 
 
 def create_gif():

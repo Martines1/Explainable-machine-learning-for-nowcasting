@@ -63,7 +63,7 @@ def main():
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
 
     for count, image in enumerate(X_raw):
-        utils.show_and_save(image, f'input_{count}', f'Input t-{15 - count * 5} (mm/5min)')
+        utils.show_and_save(image, f'input_{count}')
 
     X = data_preprocessing(X_raw)
     assert X.dtype == np.float32
@@ -79,13 +79,14 @@ def main():
         y_t = model(x_t)
     Y_pred = y_t.squeeze(1).cpu().numpy()
     Y_mm = data_postprocessing(Y_pred)[0]
-    utils.show_and_save(Y_mm, "OUT", "Prediction (mm/5min)")
+    print(Y_mm.shape)
+    utils.show_and_save(Y_mm, "OUT")
     utils.create_gif()
 
     # Optical Flow part
-    of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
-    good0, good1 = of.calculate()
-    of.draw("output/OUT.png", good0, good1)
+    #of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
+    #good0, good1 = of.calculate()
+    #of.draw("output/OUT.png", good0, good1)
 
 
 if __name__ == "__main__":
