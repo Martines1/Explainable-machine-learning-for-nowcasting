@@ -50,11 +50,12 @@ def data_preprocessing(X):
     return X
 
 
-def data_postprocessing(nwcst):
+def data_postprocessing(nwcst, shrink=False):
     if nwcst.ndim == 4:
         nwcst = nwcst[..., 0]
     nwcst = invScaler(nwcst)
-    # nwcst = pred_to_rad(nwcst)
+    if shrink:
+        nwcst = pred_to_rad(nwcst)
     nwcst = np.where(nwcst > 0, nwcst, 0)
     return nwcst
 

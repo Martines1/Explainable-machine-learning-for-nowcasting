@@ -3,5 +3,5 @@
 .idea
 __pycache__/
 *.pyc
-model/
+rainnet/model/
 *.pt

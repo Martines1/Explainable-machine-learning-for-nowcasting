@@ -1,6 +1,8 @@
 from pathlib import Path
 import numpy as np
 import torch
+
+import time_series.time_series
 import utils
 from optical_flow.optical_flow import OpticalFlow
 from utils import data_preprocessing, data_postprocessing
@@ -78,10 +80,16 @@ def main():
     with torch.inference_mode():
         y_t = model(x_t)
     Y_pred = y_t.squeeze(1).cpu().numpy()
-    Y_mm = data_postprocessing(Y_pred)[0]
-    print(Y_mm.shape)
-    utils.show_and_save(Y_mm, "OUT")
-    utils.create_gif()
+    # Y_mm_to_image = data_postprocessing(Y_pred, False)[0]
+    Y_mm = data_postprocessing(Y_pred, True)[0]
+    scans.append(Y_mm)
+
+    # utils.show_and_save(Y_mm_to_image, "OUT")
+    # utils.create_gif()
+
+    # time series part
+    time_series.time_series.vis_time_series(np.stack(scans, axis=0).astype("float32"))
+
 
     # Optical Flow part
     #of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
