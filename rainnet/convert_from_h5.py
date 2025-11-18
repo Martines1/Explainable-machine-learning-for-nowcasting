@@ -1,9 +1,10 @@
 import h5py
 import numpy as np
 import torch
-from rainnet import RainNet
+from rainnet_arch import RainNet
 
 KERAS_CONV_NODE_FMT = "model_weights/conv2d_{i}/conv2d_{i}/"
+
 
 def load_keras_h5_into_torch(h5_path: str, in_channels=4) -> RainNet:
     model = RainNet(in_channels=in_channels).eval()

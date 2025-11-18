@@ -33,6 +33,14 @@ class OpticalFlow:
         p0, p1 = self.__normalize(p0, p1, length=14.0)
         return p0, p1
 
+    def circ_mean(self, a):
+        s = np.sin(a).mean()
+        c = np.cos(a).mean()
+        return np.arctan2(s, c)
+
+    def circ_dist(self, a, b):
+        return np.abs(np.arctan2(np.sin(a-b), np.cos(a-b)))
+
     def __remove_outliers(self, p0, p1):
         p0_flat = p0.reshape(-1, 2)
         p1_flat = p1.reshape(-1, 2)
@@ -50,25 +58,43 @@ class OpticalFlow:
         H, W = self.frame1.shape[:2]
         cells_x = int(np.ceil(W / self.cell))
         cells_y = int(np.ceil(H / self.cell))
-        occupied = set()
-        keep = []
         d = p1_flat - p0_flat
+        angle = np.arctan2(d[:, 1], d[:, 0])
         dx = d[:, 0]
         dy = d[:, 1]
-        for i in np.random.permutation(len(p0_flat)):
+        cells = dict()
+
+        keep = []
+
+        for i in range(len(p0_flat)):
+            x, y = p0_flat[i]
+            cx = int(x) // self.cell
+            cy = int(y) // self.cell
+            if cx < 0 or cy < 0 or cx >= cells_x or cy >= cells_y:
+                continue
+            key = (cx, cy)
+            if key not in cells.keys():
+                cells[key] = []
+            cells[key].append(i)
+
+        for key, idxs in cells.items():
+            a = angle[idxs]
+            mu = self.circ_mean(a)
+            dist = self.circ_dist(a, mu)
+            selected_point = idxs[int(np.argmin(dist))]
+            keep.append(selected_point)
+
+        for i in keep:
             x, y = p0_flat[i]
             cx = int(x) // self.cell
             cy = int(y) // self.cell
             if 0 <= cx < cells_x and 0 <= cy < cells_y:
-                key = (cx, cy)
-                if key not in occupied:
-                    occupied.add(key)
-                    keep.append(i)
-                    center = (cx * self.cell + self.cell / 2, cy * self.cell + self.cell / 2)
-                    p0_flat[i] = center
-                    p1_flat[i] = (center[0] + dx[i], center[1] + dy[i])
+                center = (cx * self.cell + self.cell / 2, cy * self.cell + self.cell / 2)
+                p0_flat[i] = center
+                p1_flat[i] = (center[0] + dx[i], center[1] + dy[i])
         keep = np.array(keep, dtype=np.int64)
         return p0_flat[keep], p1_flat[keep]
+
 
     def __interpolate(self, p0, p1):
         p0 = p0.reshape(-1, 2).astype(np.float64)
@@ -118,5 +144,6 @@ class OpticalFlow:
             x2, y2 = pt2.ravel()
             cv2.arrowedLine(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 2, tipLength=0.3)
         cv2.imshow("Lucas-Kanade flow", frame)
+        cv2.imwrite("flow.png", frame)
         cv2.waitKey(0)
         cv2.destroyAllWindows()

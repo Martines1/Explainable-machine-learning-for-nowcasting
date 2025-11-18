@@ -3,7 +3,7 @@ import meteors as mt
 from .scalar_wrapper import ScalarWrapper
 import torch
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
+
 
 class IntegratedGradient:
 
@@ -39,6 +39,49 @@ class IntegratedGradient:
             "pct_pos": pct_pos,
             "pct_neg": pct_neg,
             "delta": getattr(ig_attr, "score", None)
+        }
+
+    def calculate_ig_with_noise(self, input, baseline, steps, n_samples, st_devs, method="smoothgrad"):
+        # Noise tunnel
+        if n_samples <= 0:
+            n_samples = 1  # run at least once
+        if input.shape[0] != 4:
+            x_chw = self.__to_chw(input)
+        else:
+            x_chw = input
+        if method not in ["smoothgrad", "smoothgrad_square", "vargrad"]:
+            print("Method not found, switched to default - smoothgrad")
+            method = "smoothgrad"
+        attrs = []
+        for _ in range(n_samples):
+            print(f"Running sample number {_ + 1}")
+            noisy = x_chw + torch.randn_like(x_chw) * float(st_devs)
+            hsi = self.__create_hsi(noisy)
+            ig_attr = self.ig.attribute(
+                hsi,
+                target=0,
+                baseline=baseline,
+                n_steps=steps,
+                return_convergence_delta=False,
+                method="gausslegendre",
+                internal_batch_size=4
+            )
+            attrs.append(self.__extract_attr(ig_attr))
+        A = torch.stack(attrs, dim=0)
+        if method == "smoothgrad":
+            A = A.mean(dim=0)
+        elif method == "smoothgrad_square":
+            A = (A ** 2).mean(dim=0)
+        else:
+            A = A.var(dim=0, unbiased=False)
+        pos, neg = self.__split_values(A)
+        pct_pos = self.__channel_percents(pos)
+        pct_neg = self.__channel_percents(neg)
+        return {
+            "attr": A,
+            "pct_pos": pct_pos,
+            "pct_neg": pct_neg,
+            "delta": None
         }
 
     def __to_chw(self, image):
@@ -160,6 +203,7 @@ class IntegratedGradient:
             plt.tight_layout(rect=[0, 0, 1, 1])
             fig.savefig(out_name, dpi=200, bbox_inches="tight")
             plt.close(fig)
+
         _plot_and_save("ALL", f"../IG/output/rainnet/ig_{mode}_all.png")
         _plot_and_save("POSITIVE", f"../IG/output/rainnet/ig_{mode}_positive.png")
-        _plot_and_save("NEGATIVE",  f"../IG/output/rainnet/ig_{mode}_negative.png")
+        _plot_and_save("NEGATIVE", f"../IG/output/rainnet/ig_{mode}_negative.png")

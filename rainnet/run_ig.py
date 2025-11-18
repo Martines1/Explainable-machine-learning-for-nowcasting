@@ -2,11 +2,10 @@ from pathlib import Path
 import numpy as np
 import torch
 import utils
-from ROI.ROI import ROI
-from ROI.ROI_IG import RegressionTargetROI
+from IG.ROI.ROI import ROI
+from IG.ROI.ROI_IG import RegressionTargetROI
 from utils import data_preprocessing, data_postprocessing
 from rainnet import RainNet
-
 from convert_from_h5 import load_keras_h5_into_torch
 from IG.IntegratedGradient import IntegratedGradient
 from IG.Regression_target import RegressionTargetIG
@@ -73,12 +72,12 @@ def main():
 
     X = data_preprocessing(X_raw)[0]
     assert X.dtype == np.float32
-    # target = RegressionTargetIG(mode="mean")
+    target = RegressionTargetIG(mode="mean")
 
-    roi = ROI("output/OUT.png", radius=8)
-    roi.show_image()
-    mask = roi.get_mask()
-    target = RegressionTargetROI(torch.from_numpy(mask), mode="mean")
+    # roi = ROI("output/OUT.png", radius=8)
+    # roi.show_image()
+    # mask = roi.get_mask()
+    # target = RegressionTargetROI(torch.from_numpy(mask), mode="mean")
 
     baseline = data_preprocessing(np.zeros_like(X_raw))[0]
     baseline_chw = np.moveaxis(baseline, -1, 0).astype(np.float32)
@@ -95,7 +94,9 @@ def main():
     model = _load_torch_model()
 
     ig_explainer = IntegratedGradient(model, target)
-    res = ig_explainer.calculate_ig(X, baseline=baseline_t, steps=24)
+    available_methods = ["smoothgrad", "smoothgrad_square", "vargrad"]
+    res = ig_explainer.calculate_ig_with_noise(X, baseline=baseline_t, steps=2, n_samples=4, st_devs=0.01, method=available_methods[1])
+    # res = ig_explainer.calculate_ig(X, baseline_t, steps=2)
     X_chw = np.transpose(X, (2, 0, 1)).astype(np.float32, copy=False)
     x_t_chw = torch.from_numpy(X_chw).to(device)
 

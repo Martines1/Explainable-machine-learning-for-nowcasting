@@ -113,9 +113,9 @@ def read_ry_radolan(path: Path) -> np.ndarray:
     return arr
 
 
-def getData():
+def getData(number):
     data = []
-    folder = "data"
+    folder = "data/" + number
     for filename in os.listdir(folder):
         if os.path.isfile(os.path.join(folder, filename)):
             data.append(filename)

@@ -1,20 +1,23 @@
+import sys
 from pathlib import Path
 import numpy as np
 import torch
 
-import time_series.time_series
+from perturbation import difference
+from perturbation.perturbation import Perturbation
 import utils
-from optical_flow.optical_flow import OpticalFlow
 from utils import data_preprocessing, data_postprocessing
-from rainnet import RainNet
+from rainnet_arch import RainNet
 
 from convert_from_h5 import load_keras_h5_into_torch
 
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 
-FILES = utils.getData()
-DATA_DIR = current_dir / "data"
+data_number = "1"
+
+FILES = utils.getData(data_number)
+DATA_DIR = current_dir / "data" / data_number
 
 PT_WEIGHTS = current_dir / "model" / "rainnet_torch_converted.pt"
 H5_WEIGHTS = current_dir / "model" / "rainnet.h5"
@@ -54,47 +57,66 @@ def _to_torch_input(X: np.ndarray) -> torch.Tensor:
 def main():
     file_paths = [DATA_DIR / f for f in FILES]
     file_paths = sorted(file_paths, key=lambda f: utils.parse_ts(f.name))
-
+    if len(file_paths) < 4:
+        sys.exit("RainNet requires 4 radar images as an input!")
     print("Used files as input (ordered by time):")
     for p in file_paths:
         print("  ", p.name)
 
     scans = [utils.read_ry_radolan(p) for p in file_paths]
+    ground_truth = None
+    if len(file_paths) == 5:
+        utils.show_and_save(scans[4].astype("float32"), f'ground_truth')
+
     X_raw = np.stack(scans, axis=0).astype("float32")
+
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
-
     for count, image in enumerate(X_raw):
         utils.show_and_save(image, f'input_{count}')
 
-    X = data_preprocessing(X_raw)
-    assert X.dtype == np.float32
-    model = _load_torch_model()
-    x_t = _to_torch_input(X)
+    # for i in range(3):
+    #     mask = difference.calculate_diff(X_raw[i], X_raw[i+1], 0.0)
+    #     difference.show_diff(X_raw[i+1], mask)
 
+    # for i in range(4):
+    #     mask = difference.calculate_diff_both(X_raw[i], ground_truth, 0.0)
+    #     difference.show_diff(X_raw[i], mask)
+
+    X = data_preprocessing(X_raw)
+    if X.shape[-1] == 5:
+        ground_truth = X[0, :, :, -1]
+        X = X[:, :, :, :4]
+
+    model = _load_torch_model()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f'Using device {device}')
+
+    assert X.dtype == np.float32
+    x_t = _to_torch_input(X)
 
     model.to(device)
     x_t = x_t.to(device)
-    with torch.inference_mode():
-        y_t = model(x_t)
-    Y_pred = y_t.squeeze(1).cpu().numpy()
-    # Y_mm_to_image = data_postprocessing(Y_pred, False)[0]
-    Y_mm = data_postprocessing(Y_pred, False)[0]
-    scans.append(Y_mm)
+    masks = difference.calculate_diff_unique(X_raw[:4], 0.0)
+    for i in range(4):
+        difference.show_diff(X_raw[i], masks[i])
+    for i in range(1):
+        pert = Perturbation(model, x_t, device, ground_truth)
+        baseline = data_preprocessing(np.zeros_like(X_raw))[0, :, :, 0]
+        print(np.min(baseline), np.max(baseline))
+        pert_result = pert.turn_off_channels([1, 2], baseline, "accuracy")
+        print(f'Diff {i}: {pert_result["diff"] * 100:.2f} %')
+        print(f'Ground truth perputated loss {i}: {pert_result["gt_perp_diff"] * 100:.2f} %')
+        print(f'Ground truth base loss {i}: {pert_result["gt_base_diff"] * 100:.2f} %')
+    Y_mm = pert_result["base_pred"]
+    Y_pert_mm = pert_result["pert_pred"]
+    Y_mm = Y_mm[None, :, :]
+    Y_pert_mm = Y_pert_mm[None, :, :]
+    Y_mm = data_postprocessing(Y_mm, False)[0]
+    Y_pert_mm = data_postprocessing(Y_pert_mm, False)[0]
+    utils.show_and_save(Y_mm, "OUT_base")
+    utils.show_and_save(Y_pert_mm, "OUT_pert")
 
-    utils.show_and_save(Y_mm, "OUT")
-    utils.create_gif()
-
-    # time series part
-    # time_series.time_series.vis_time_series(np.stack(scans, axis=0).astype("float32"))
-
-
-    # Optical Flow part
-    of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
-    good0, good1 = of.calculate()
-    of.draw("output/OUT.png", good0, good1)
+#
 
 
 if __name__ == "__main__":
