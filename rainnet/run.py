@@ -6,15 +6,17 @@ import time_series.time_series
 import utils
 from optical_flow.optical_flow import OpticalFlow
 from utils import data_preprocessing, data_postprocessing
-from rainnet import RainNet
+from rainnet_arch import RainNet
 
 from convert_from_h5 import load_keras_h5_into_torch
 
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 
-FILES = utils.getData()
-DATA_DIR = current_dir / "data"
+data_number = "2"
+
+FILES = utils.getData(data_number)
+DATA_DIR = current_dir / "data" / data_number
 
 PT_WEIGHTS = current_dir / "model" / "rainnet_torch_converted.pt"
 H5_WEIGHTS = current_dir / "model" / "rainnet.h5"
@@ -67,7 +69,7 @@ def main():
     for count, image in enumerate(X_raw):
         utils.show_and_save(image, f'input_{count}')
 
-    X = data_preprocessing(X_raw)
+    X = data_preprocessing(X_raw[:4])
     assert X.dtype == np.float32
     model = _load_torch_model()
     x_t = _to_torch_input(X)
@@ -84,7 +86,7 @@ def main():
     Y_mm = data_postprocessing(Y_pred, False)[0]
     scans.append(Y_mm)
 
-    utils.show_and_save(Y_mm, "OUT")
+    utils.show_and_save(Y_mm, "out")
     utils.create_gif()
 
     # time series part
@@ -92,9 +94,9 @@ def main():
 
 
     # Optical Flow part
-    of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
-    good0, good1 = of.calculate()
-    of.draw("output/OUT.png", good0, good1)
+    #of = OpticalFlow("output/input_0.png", "output/OUT.png", window_size=32, cell=46)
+    #good0, good1 = of.calculate()
+    #of.draw("output/OUT.png", good0, good1)
 
 
 if __name__ == "__main__":

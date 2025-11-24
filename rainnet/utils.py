@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-from matplotlib import colors, cm
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from wradlib import io as wio
 from pathlib import Path
 import os
@@ -41,10 +41,11 @@ def pred_to_rad(pred, from_shape=928, to_shape=900):
     return pred[::, padding:padding + to_shape, padding:padding + to_shape].copy()
 
 
-def data_preprocessing(X):
+def data_preprocessing(X, scale=True):
     X = np.moveaxis(X, 0, -1)
     X = X[np.newaxis, ::, ::, ::]
-    X = Scaler(X)
+    if scale:
+        X = Scaler(X)
     X = pad_to_shape(X)
 
     return X
@@ -60,38 +61,100 @@ def data_postprocessing(nwcst, shrink=False):
     return nwcst
 
 
-def show_and_save(img, name):
+# 0.005 instead of 0.01 due to numerical instability
+boundaries = [0.005, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 5.0, 7.5, 10.0, 15.0, 23.0, 58.0]
+colors = [
+    (0.56, 0.71, 1),  # 0.01 – 0.05
+    (0.329, 0.553, 1),  # 0.05 – 1
+    (0.192, 0.463, 1),  # 0.05 - 0.1
+    (0.102, 0.384, 0.949),  # 0.1 - 0.2
+    (0.463, 1, 0.463),  # 0.2 - 0.3
+    (0.231, 0.788, 0.298),  # 0.3 - 0.5
+    "green",  # 1.1 - 5
+    "yellow",  # 5.0 - 7.5
+    (1, 0.757, 0),  # 7.5 - 10
+    (1, 0.549, 0),  # 15 – 23
+    "red",  # 23 – 58
+    "purple"  # > 58
+]
+
+cmap = ListedColormap(colors)
+cmap.set_under("white")
+norm = BoundaryNorm(boundaries, ncolors=cmap.N)
+
+
+def show_and_save(img, name, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/clean").mkdir(parents=True, exist_ok=True)
+    Path("output/detailed").mkdir(parents=True, exist_ok=True)
+    # CLEAN VERSION
+    plt.imsave(f"output/clean/{name}.png", cmap(norm(img)))
 
-    img = np.where(img > 1e-2, img, 0.0)
-    pos = img[img > 0]
-    if pos.size:
-        vmax = float(max(np.percentile(pos, 99), 0.5))
+    # DETAILED VERSION
+    h, w = img.shape
+    dpi = 100
+    fig = plt.figure(figsize=(w / dpi, h / dpi), dpi=dpi)
+    ax = fig.add_subplot(1, 1, 1)
+
+    im = ax.imshow(img, cmap=cmap, norm=norm)
+    edited_boundaries = boundaries.copy()
+    edited_boundaries[0] = 0.01
+    cbar = fig.colorbar(im, ax=ax, ticks=edited_boundaries)
+    cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
+    ax.set_title(name, fontweight="bold")
+    ax.set_xlabel("km", fontweight="bold")
+    ax.set_ylabel("km", fontweight="bold")
+    fig.savefig(f"output/detailed/{name}.png", dpi=dpi, bbox_inches="tight")
+    if show:
+        plt.show()
     else:
-        vmax = 1.0
+        plt.close()
 
-    norm = colors.Normalize(vmin=0.0, vmax=vmax, clip=True)
-    cmap = cm.get_cmap("viridis")
+
+def show_and_save_mask(img, mask, name, show=False):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/clean").mkdir(parents=True, exist_ok=True)
     rgba = cmap(norm(img))
-    mask0 = (img == 0.0)
-    rgba[mask0, :3] = 1.0
-    rgba[mask0, 3] = 1.0
 
-    plt.imsave(f"output/{name}.png", rgba)
+    # sanity check
+    white = np.array([1.0, 1.0, 1.0, 1.0])
+    problem_pixels = np.logical_and(
+        mask,
+        np.all(rgba == white, axis=-1)
+    )
+    count = np.sum(problem_pixels)
+    if count > 0:
+        print(f"Warning: {count} problem pixels in mask visualization for {name}")
+
+    rgba[..., 3] = 0.4
+    rgba[mask] = [1.0, 0.0, 0.0, 1.0]
+
+    plt.imsave(f"output/clean/{name}.png", rgba)
+    if show:
+        plt.figure()
+        plt.imshow(rgba)
+        plt.axis("off")
+        plt.title(name)
+        plt.show()
+    else:
+        plt.close()
 
 
 def create_gif():
-    files = ["output/input_0.png", "output/input_1.png", "output/input_2.png", "output/input_3.png", "output/OUT.png"]
-    frames = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in files]
-    frames[0].save(
-        "output/out.gif",
-        save_all=True,
-        append_images=frames[1:],
-        duration=1200,
-        loop=0,
-        optimize=True,
-        disposal=2
-    )
+    types = ["clean", "detailed"]
+    for t in types:
+        files = [f"output/{t}/input #0.png", f"output/{t}/input #1.png", f"output/{t}/input #2.png",
+                 f"output/{t}/input #3.png", f"output/{t}/out.png"]
+        frames = [Image.open(f).convert("P", palette=Image.ADAPTIVE) for f in files]
+        frames[0].save(
+            f"output/{t}/out.gif",
+            save_all=True,
+            append_images=frames[1:],
+            duration=1200,
+            loop=0,
+            optimize=True,
+            disposal=2
+        )
 
 
 def read_ry_radolan(path: Path) -> np.ndarray:
