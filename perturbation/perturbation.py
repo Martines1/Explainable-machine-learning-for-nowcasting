@@ -1,5 +1,7 @@
 import sys
 
+from matplotlib import pyplot as plt
+
 from perturbation import difference
 from perturbation.loss_functions import *
 import torch
@@ -8,6 +10,7 @@ import torch
 class Perturbation:
     def __init__(self, model, input_, device, ground_truth):
         # input_ shape should be (B, C, H, W) or (B, C, W, H)
+        self.importance = None
         self.model = model
         self.model.eval()
         self.input = input_
@@ -19,12 +22,12 @@ class Perturbation:
             y_t = self.model(x)
         return y_t.detach().cpu().numpy()[0, 0, :, :]
 
-    def turn_off_channels(self, ch, baseline, loss="logcosh"):
+    def turn_off_channels(self, ch, baseline, loss="logcosh", rain_value=None):
         if type(ch) is not list:
             sys.exit("Channels parameter must be list")
         if len(ch) == 0:
             return
-
+        rain_value = np.round(rain_value, 3)
         input_pert = self.input.detach().cpu().numpy().copy()
         for c in ch:
             input_pert[:, c, :, :] = baseline
@@ -32,13 +35,12 @@ class Perturbation:
         loss_f = get_function(loss)
         base_pred = self.forward(self.input)
         pert_pred = self.forward(input_pert)
-        loss_result = loss_f.calculate(pert_pred, base_pred)
-        result = {"diff": loss_result, "base_pred": base_pred, "pert_pred": pert_pred}
-        if self.ground_truth is not None:
-            gt_loss_result = loss_f.calculate(pert_pred, self.ground_truth)
-            result["gt_perp_diff"] = gt_loss_result
-            gt_base_diff = loss_f.calculate(base_pred, self.ground_truth)
-            result["gt_base_diff"] = gt_base_diff
+        result = dict()
+        result["pert_pred"] = pert_pred
+        gt_loss_result = loss_f.calculate(pert_pred, self.ground_truth, rain_value)
+        result["gt_perp_diff"] = gt_loss_result
+        gt_base_diff = loss_f.calculate(base_pred, self.ground_truth, rain_value)
+        result["gt_base_diff"] = gt_base_diff
         return result
 
     def perturbate_channels(self, baseline, masks, loss="logcosh", window=128):
@@ -52,7 +54,7 @@ class Perturbation:
         counter = self.get_counter(base_input, masks, window)
 
         importance = np.zeros((c, h, w), dtype=np.float32)
-        for ch in range(c):
+        for ch in range(1):
             diff_mask = masks[ch]
             internal_counter = 0
             for y in range(0, h, window):
@@ -67,7 +69,6 @@ class Perturbation:
                     base_pred_mask = base_pred[y:y2, x:x2]
                     internal_counter += 1
                     print(f'Processing channel {ch}, done {(internal_counter / counter[ch]) * 100:.2f} %')
-                    print([y, y2, x, x2])
                     input_copy = base_input.copy()
                     frame = input_copy[0, ch, :, :]
                     patch = frame[y:y2, x:x2]
@@ -77,11 +78,13 @@ class Perturbation:
 
                     pert_loss_result = 1 - loss_f.calculate(pert_pred_mask, gt_mask, np.round(baseline, 4))
                     base_loss_result = 1 - loss_f.calculate(base_pred_mask, gt_mask, np.round(baseline, 4))
-                    print(pert_loss_result)
-                    print(base_loss_result)
+                    # print(pert_loss_result)
+                    # print(base_loss_result)
                     delta = pert_loss_result - base_loss_result
-                    print(delta)
+                    # print(delta)
                     importance[ch, y:y2, x:x2][win_mask] = delta / mask_count
+        self.normalize_importance(importance)
+        self.importance = importance
         return importance
 
     def get_counter(self, base_input, masks, window):
@@ -99,3 +102,18 @@ class Perturbation:
                     else:
                         result[ch] += 1
         return result
+
+    def normalize_importance(self, importance):
+        c, h, w = importance.shape
+        for ch in range(c):
+            zero_mask = importance[ch] == 0.0
+            min_val = np.min(importance[ch])
+            max_val = np.max(importance[ch])
+            if max_val > min_val:
+                importance[ch] = (importance[ch] - min_val) / (max_val - min_val)
+            else:
+                importance[ch] = 0.0
+            importance[ch][zero_mask] = 0.0
+
+
+

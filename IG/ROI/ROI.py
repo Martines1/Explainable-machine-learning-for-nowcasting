@@ -58,7 +58,7 @@ class ROI:
         return np.asarray(selected_roi)
 
     def get_mask(self):
-        return (self.mask == 1).astype("float32")
+        return (self.mask == 1).astype("float64")
 
 
 

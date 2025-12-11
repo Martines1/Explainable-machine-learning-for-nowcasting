@@ -92,13 +92,13 @@ class OpticalFlow:
                 center = (cx * self.cell + self.cell / 2, cy * self.cell + self.cell / 2)
                 p0_flat[i] = center
                 p1_flat[i] = (center[0] + dx[i], center[1] + dy[i])
-        keep = np.array(keep, dtype=np.int64)
+        keep = np.array(keep, dtype=np.int32)
         return p0_flat[keep], p1_flat[keep]
 
 
     def __interpolate(self, p0, p1):
-        p0 = p0.reshape(-1, 2).astype(np.float64)
-        p1 = p1.reshape(-1, 2).astype(np.float64)
+        p0 = p0.reshape(-1, 2).astype(np.float32)
+        p1 = p1.reshape(-1, 2).astype(np.float32)
 
         H, W = self.frame1.shape[:2]
 

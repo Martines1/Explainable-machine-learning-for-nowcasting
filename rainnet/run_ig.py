@@ -5,7 +5,7 @@ import utils
 from IG.ROI.ROI import ROI
 from IG.ROI.ROI_IG import RegressionTargetROI
 from utils import data_preprocessing, data_postprocessing
-from rainnet import RainNet
+from rainnet_arch import RainNet
 from convert_from_h5 import load_keras_h5_into_torch
 from IG.IntegratedGradient import IntegratedGradient
 from IG.Regression_target import RegressionTargetIG
@@ -13,8 +13,10 @@ from IG.Regression_target import RegressionTargetIG
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 
-FILES = utils.getData()
-DATA_DIR = current_dir / "data"
+data_number = "2"
+
+FILES = utils.getData(data_number)
+DATA_DIR = current_dir / "data" / data_number
 
 PT_WEIGHTS = current_dir / "model" / "rainnet_torch_converted.pt"
 H5_WEIGHTS = current_dir / "model" / "rainnet.h5"
@@ -53,7 +55,7 @@ def _to_torch_input(X: np.ndarray) -> torch.Tensor:
 
 def main():
     file_paths = [DATA_DIR / f for f in FILES]
-    file_paths = sorted(file_paths, key=lambda f: utils.parse_ts(f.name))
+    file_paths = sorted(file_paths[:4], key=lambda f: utils.parse_ts(f.name))
 
     print("Used files as input (ordered by time):")
     for p in file_paths:
@@ -95,8 +97,8 @@ def main():
 
     ig_explainer = IntegratedGradient(model, target)
     available_methods = ["smoothgrad", "smoothgrad_square", "vargrad"]
-    res = ig_explainer.calculate_ig_with_noise(X, baseline=baseline_t, steps=2, n_samples=4, st_devs=0.01, method=available_methods[1])
-    # res = ig_explainer.calculate_ig(X, baseline_t, steps=2)
+    # res = ig_explainer.calculate_ig_with_noise(X, baseline=baseline_t, steps=2, n_samples=4, st_devs=0.01, method=available_methods[1])
+    res = ig_explainer.calculate_ig(X, baseline_t, steps=2)
     X_chw = np.transpose(X, (2, 0, 1)).astype(np.float32, copy=False)
     x_t_chw = torch.from_numpy(X_chw).to(device)
 

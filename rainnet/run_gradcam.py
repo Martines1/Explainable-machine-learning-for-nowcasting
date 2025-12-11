@@ -6,15 +6,17 @@ import utils
 from gradcam.gradcam import GradCam
 from gradcam.regression_target import RegressionTarget
 from utils import data_preprocessing
-from rainnet import RainNet
+from rainnet_arch import RainNet
 
 from convert_from_h5 import load_keras_h5_into_torch
 
 current_file = Path(__file__).resolve()
 current_dir = current_file.parent
 
-FILES = utils.getData()
-DATA_DIR = current_dir / "data"
+data_number = "2"
+
+FILES = utils.getData(data_number)
+DATA_DIR = current_dir / "data" / data_number
 
 PT_WEIGHTS = current_dir / "model" / "rainnet_torch_converted.pt"
 H5_WEIGHTS = current_dir / "model" / "rainnet.h5"
@@ -68,12 +70,12 @@ def main():
         print("  ", p.name)
 
     scans = [utils.read_ry_radolan(p) for p in file_paths]
-    X_raw = np.stack(scans, axis=0).astype("float32")
+    X_raw = np.stack(scans[:4], axis=0).astype("float32")
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
 
     for count, image in enumerate(X_raw):
-        utils.show_and_save(image, f'input_{count}', f'Input t-{15 - count * 5} (mm/5min)')
+        utils.show_and_save(image, f'input_{count}', False)
 
     X = data_preprocessing(X_raw)
     assert X.dtype == np.float32
@@ -85,8 +87,7 @@ def main():
 
     model.to(device)
     x_t = x_t.to(device)
-
-    target = RegressionTarget("topk", 0.1)
+    target = RegressionTarget("mean")
     gradcam = GradCam(model, x_t, module="conv8f")
     cams = gradcam.test_one_channel(target)
     labels = ["t-15", "t-10", "t-5", "t"]

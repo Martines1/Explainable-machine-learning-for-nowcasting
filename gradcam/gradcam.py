@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from matplotlib import pyplot as plt
 from pytorch_grad_cam import GradCAMPlusPlus
 import torch.nn as nn
@@ -52,7 +54,7 @@ class GradCam:
 
     def _build_isolated_input(self, x_nchw: torch.Tensor, c, bleed) -> torch.Tensor:
         device = x_nchw.device
-        baseline = torch.log(torch.tensor(0.01, dtype=x_nchw.dtype, device=device))  # ~ -4.60517
+        baseline = torch.log(torch.tensor(0.01, dtype=x_nchw.dtype, device=device))
         x_iso = torch.empty_like(x_nchw, device=device, dtype=x_nchw.dtype)
         x_iso[:] = baseline
         if bleed > 0.0:
@@ -73,7 +75,7 @@ class GradCam:
             cam_norm = cam / (p99 + 1e-8)
         cam_norm = np.clip(cam_norm, 0.0, 1.0)
         fig, ax = plt.subplots(figsize=(6, 6))
-        im = ax.imshow(cam_norm, origin="lower", cmap="inferno",
+        im = ax.imshow(cam_norm, cmap="inferno",
                        vmin=0.0, vmax=1.0, interpolation="nearest")
         cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cb.set_label("importance (normalized)")
@@ -81,7 +83,8 @@ class GradCam:
         ax.set_xlabel("x [pixel]")
         ax.set_ylabel("y [pixel]")
         plt.tight_layout()
-        fig.savefig(f"output/{name}.png", dpi=150)
+        Path("output/gradcam").mkdir(parents=True, exist_ok=True)
+        fig.savefig(f"output/gradcam/{name}.png", dpi=150)
         plt.close(fig)
 
     def _pred_to_rad(self, pred, from_shape=928, to_shape=900):
@@ -99,7 +102,7 @@ class GradCam:
             x_iso = self._build_isolated_input(self.input, c, bleed=bleed)
             gray = self.cam_algo(input_tensor=x_iso, targets=[target], aug_smooth=aug_smooth, eigen_smooth=False)
             cams.append(gray[0])
-            self._save_cam(gray[0], f"cam_{c + 1}", f'channel{c + 1}')
+            self._save_cam(gray[0], f"cam_{c + 1}", f'channel {c + 1}')
         return cams
 
     def _build_single_input(self, x_nchw: torch.Tensor, c, bleed) -> torch.Tensor:
@@ -109,19 +112,19 @@ class GradCam:
         x_iso[:] = baseline
         if bleed > 0.0:
             x_iso += bleed * (x_nchw - baseline)
-        x_iso[:, c, :, :] = x_nchw[:, 0, :, :]  # always use channel 0
+        x_iso[:, c, :, :] = x_nchw[:, 0, :, :]
         return x_iso
 
     def test_one_channel(self, target: RegressionTarget, bleed=0.0, aug_smooth: bool = False) -> list:
         self._disable_inplace_relu()
         cams = []
         for c in range(self.input.size(1)):
-            print(f"Running for channel 0!")
+            print(f"Running for channel {c}!")
             self.cam_algo = self._get_method()
             x_iso = self._build_single_input(self.input, c, bleed=bleed)
             gray = self.cam_algo(input_tensor=x_iso, targets=[target], aug_smooth=aug_smooth, eigen_smooth=False)
             cams.append(gray[0])
-            self._save_cam(gray[0], f"test_cam_{c + 1}", f'channel{0}')
+            self._save_cam(gray[0], f"test_cam_{c + 1}", f'channel {c}')
         return cams
 
     def overlay_on_input(self, base_img_mm, result_cam, title: str = "Grad-CAM overlay"):
@@ -141,13 +144,11 @@ class GradCam:
 
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(np.ma.masked_less_equal(img, 0.0),
-                  origin="lower",
                   cmap="viridis",
                   vmin=0.0,
                   vmax=vmax,
                   interpolation="nearest")
         ax.imshow(cam_norm,
-                  origin="lower",
                   cmap="Reds",
                   alpha=0.6,
                   interpolation="nearest")
@@ -156,5 +157,6 @@ class GradCam:
         ax.set_xlabel("x [pixel]")
         ax.set_ylabel("y [pixel]")
         plt.tight_layout()
-        fig.savefig(f"output/{title}.png", dpi=150)
+        Path("output/gradcam").mkdir(parents=True, exist_ok=True)
+        fig.savefig(f"output/gradcam/{title}.png", dpi=150)
         plt.close(fig)

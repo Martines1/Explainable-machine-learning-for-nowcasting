@@ -19,8 +19,8 @@ def load_keras_h5_into_torch(h5_path: str, in_channels=4) -> RainNet:
             k_tf = f[k_name][()]
             b_tf = f[b_name][()]
 
-            k_pt = np.transpose(k_tf, (3, 2, 0, 1)).astype(np.float32)
-            b_pt = b_tf.astype(np.float32)
+            k_pt = np.transpose(k_tf, (3, 2, 0, 1)).astype(np.float64)
+            b_pt = b_tf.astype(np.float64)
 
             with torch.no_grad():
                 conv.weight.copy_(torch.from_numpy(k_pt))

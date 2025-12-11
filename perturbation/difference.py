@@ -26,8 +26,9 @@ def calculate_diff_both(frame1, frame2, no_precip_value):
 def calculate_diff_unique(frames, no_precip_value):
     if frames.ndim != 3:
         sys.exit("frames must have shape (C, H, W)!")
+    frames = np.asarray(frames, dtype=np.float64)
     C, H, W = frames.shape
-
+    frames = np.round(frames, decimals=3)
     if C < 2:
         sys.exit("At least two frames are required to calculate differences!")
 

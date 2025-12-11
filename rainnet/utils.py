@@ -62,7 +62,7 @@ def data_postprocessing(nwcst, shrink=False):
 
 
 # 0.005 instead of 0.01 due to numerical instability
-boundaries = [0.005, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 5.0, 7.5, 10.0, 15.0, 23.0, 58.0]
+boundaries = [0.009, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 5.0, 7.5, 10.0, 15.0, 23.0, 58.0]
 colors = [
     (0.56, 0.71, 1),  # 0.01 – 0.05
     (0.329, 0.553, 1),  # 0.05 – 1
@@ -84,6 +84,7 @@ norm = BoundaryNorm(boundaries, ncolors=cmap.N)
 
 
 def show_and_save(img, name, show=False):
+    img = np.array(img, dtype=np.float64)
     Path("output").mkdir(parents=True, exist_ok=True)
     Path("output/clean").mkdir(parents=True, exist_ok=True)
     Path("output/detailed").mkdir(parents=True, exist_ok=True)
@@ -162,13 +163,13 @@ def read_ry_radolan(path: Path) -> np.ndarray:
     nodata = attrs.get("nodataflag", -9999)
     sec_idx = attrs.get("secondary")
 
-    arr = data.astype("float32", copy=True)
+    arr = data.astype("float64", copy=True)
 
     if sec_idx is not None and np.size(sec_idx) > 0:
         arr.flat[sec_idx] = nodata
 
     marr = np.ma.masked_equal(arr, nodata)
-    arr = np.ma.filled(marr, 0.0).astype("float32")
+    arr = np.ma.filled(marr, 0.0).astype("float64")
     arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
     if arr.shape != (900, 900):
@@ -183,3 +184,31 @@ def getData(number):
         if os.path.isfile(os.path.join(folder, filename)):
             data.append(filename)
     return data
+
+
+def show_and_save_importance(image, importance, name, show=False):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/clean").mkdir(parents=True, exist_ok=True)
+    rgba = cmap(norm(image))
+
+    importance = np.asarray(importance, dtype=float)
+
+    alpha = np.zeros_like(importance, dtype=float)
+    alpha[importance > 0.0] = 1.0
+
+    fig, ax = plt.subplots()
+    ax.imshow(rgba, alpha=0.2)
+
+    im = ax.imshow(importance, cmap="plasma")
+    im.set_alpha(alpha)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Importance", fontsize=9)
+
+    ax.axis("off")
+    fig.savefig(f"output/clean/{name}.png", bbox_inches="tight", dpi=100)
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)

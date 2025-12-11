@@ -106,34 +106,33 @@ def main():
 
     model.to(device)
     x_t = x_t.to(device)
-    # masks = difference.calculate_diff_unique(X_raw[:4], 0.0)
+
+    for i in range(3):
+        pert = Perturbation(model, x_t, device, ground_truth)
+        baseline = data_preprocessing(np.zeros_like(X_raw))[0, :, :, 0]
+
+        pert_result = pert.turn_off_channels([i, i+1], baseline, "accuracy", np.log(0.02))
+        print(f'Ground truth base loss: {pert_result["gt_base_diff"] * 100:.2f} %')
+        print(f'Ground truth perputated loss {i}: {pert_result["gt_perp_diff"] * 100:.2f} %')
+        print()
+
+    Y_pert_mm = pert_result["pert_pred"]
+
+    Y_pert_mm = Y_pert_mm[None, :, :]
+
+    Y_pert_mm = data_postprocessing(Y_pert_mm, False)[0]
+    utils.show_and_save(Y_pert_mm, "OUT_pert")
+    #
+    # pert = Perturbation(model, x_t, device, ground_truth)
+    # baseline = np.log(0.01)
+    #
+    # X1 = np.transpose(X1, (2, 0, 1))
+    # print(X1.shape)
+    # masks = difference.calculate_diff_unique(X1, 0.0)
     # for i in range(4):
-    #     difference.show_diff(X_raw[i], masks[i])
-    # for i in range(1):
-    #     pert = Perturbation(model, x_t, device, ground_truth)
-    #     baseline = data_preprocessing(np.zeros_like(X_raw))[0, :, :, 0]
-    #     print(np.min(baseline), np.max(baseline))
-    #     pert_result = pert.turn_off_channels([1, 2], baseline, "accuracy")
-    #     print(f'Diff {i}: {pert_result["diff"] * 100:.2f} %')
-    #     print(f'Ground truth perputated loss {i}: {pert_result["gt_perp_diff"] * 100:.2f} %')
-    #     print(f'Ground truth base loss {i}: {pert_result["gt_base_diff"] * 100:.2f} %')
-    # Y_mm = pert_result["base_pred"]
-    # Y_pert_mm = pert_result["pert_pred"]
-    # Y_mm = Y_mm[None, :, :]
-    # Y_pert_mm = Y_pert_mm[None, :, :]
-    # Y_mm = data_postprocessing(Y_mm, False)[0]
-    # Y_pert_mm = data_postprocessing(Y_pert_mm, False)[0]
-    # utils.show_and_save(Y_mm, "OUT_base")
-    # utils.show_and_save(Y_pert_mm, "OUT_pert")
-
-    pert = Perturbation(model, x_t, device, ground_truth)
-    baseline = np.log(0.01)
-
-    X1 = np.transpose(X1, (2, 0, 1))
-    masks = difference.calculate_diff_unique(X1, 0.0)
-    for i in range(4):
-        utils.show_and_save(X1[i], f'Preprocessed input #{i}')
-    #pert_result = pert.perturbate_channels(baseline, masks, "accuracy")
+    #     utils.show_and_save(X1[i], f'Preprocessed input #{i}')
+    # pert_result = pert.perturbate_channels(baseline, masks, "accuracy")
+    # utils.show_and_save_importance(X1[0], pert_result[0], "importance_map", True)
     #np.save('importance_map.npy', pert_result)
 
 
