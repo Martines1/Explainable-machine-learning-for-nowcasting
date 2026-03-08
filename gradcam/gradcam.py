@@ -10,13 +10,13 @@ from gradcam.regression_target import RegressionTarget
 
 class GradCam:
 
-    def __init__(self, model, inputArray, module=None):
+    def __init__(self, model, input_array, module=None):
         self.model = model
         if module is None:
             self.module = self._get_last_layer()
         else:
             self.module = self._find_last(module)
-        self.input = inputArray
+        self.input = input_array
         self.cam_algo = self._get_method()
 
     def _get_method(self):
@@ -33,9 +33,9 @@ class GradCam:
                 return module
         return None
 
-    def _find_last(self, selectedModule):
+    def _find_last(self, selected_module):
         for name, module in self.model.named_modules():
-            if isinstance(module, nn.Conv2d) and name == selectedModule:
+            if isinstance(module, nn.Conv2d) and name == selected_module:
                 return module
         return None
 

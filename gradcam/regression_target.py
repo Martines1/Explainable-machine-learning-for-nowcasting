@@ -1,5 +1,6 @@
 import torch
 
+
 class RegressionTarget:
     def __init__(self, mode, k_value=None):
         self.mode = mode.lower()
@@ -17,4 +18,3 @@ class RegressionTarget:
                 vals, _ = torch.topk(y.reshape(-1), k)
                 return vals.mean()
         return y.max()
-

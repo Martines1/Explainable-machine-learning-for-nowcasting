@@ -60,7 +60,7 @@ class RainAccuracy(LossFunction):
         correct_sum = np.sum((pred_mask == 1) & (target_mask == 1))
         wrong_sum = np.sum((pred_mask == 1) & (target_mask == 0)) + np.sum((pred_mask == 0) & (target_mask == 1))
         if (correct_sum + wrong_sum) == 0:  # special case is there is no rain at all
-            return 0.0
+            return np.NaN
         return float(correct_sum / (correct_sum + wrong_sum))
 
 

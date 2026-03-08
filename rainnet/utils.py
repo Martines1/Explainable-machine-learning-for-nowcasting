@@ -97,7 +97,7 @@ def show_and_save(img, name, show=False):
     fig = plt.figure(figsize=(w / dpi, h / dpi), dpi=dpi)
     ax = fig.add_subplot(1, 1, 1)
 
-    im = ax.imshow(img, cmap=cmap, norm=norm)
+    im = ax.imshow(img, cmap=cmap, norm=norm, interpolation='nearest')
     edited_boundaries = boundaries.copy()
     edited_boundaries[0] = 0.01
     cbar = fig.colorbar(im, ax=ax, ticks=edited_boundaries)
@@ -106,6 +106,7 @@ def show_and_save(img, name, show=False):
     ax.set_xlabel("km", fontweight="bold")
     ax.set_ylabel("km", fontweight="bold")
     fig.savefig(f"output/detailed/{name}.png", dpi=dpi, bbox_inches="tight")
+    fig.savefig(f"output/detailed/{name}.svg", format="svg", bbox_inches="tight")
     if show:
         plt.show()
     else:
@@ -127,13 +128,13 @@ def show_and_save_mask(img, mask, name, show=False):
     if count > 0:
         print(f"Warning: {count} problem pixels in mask visualization for {name}")
 
-    rgba[..., 3] = 0.4
+    rgba[..., 3] = 0.2
     rgba[mask] = [1.0, 0.0, 0.0, 1.0]
 
     plt.imsave(f"output/clean/{name}.png", rgba)
     if show:
         plt.figure()
-        plt.imshow(rgba)
+        plt.imshow(rgba, interpolation='nearest')
         plt.axis("off")
         plt.title(name)
         plt.show()
@@ -194,12 +195,12 @@ def show_and_save_importance(image, importance, name, show=False):
     importance = np.asarray(importance, dtype=float)
 
     alpha = np.zeros_like(importance, dtype=float)
-    alpha[importance > 0.0] = 1.0
+    alpha[importance != 0.0] = 1.0
 
     fig, ax = plt.subplots()
-    ax.imshow(rgba, alpha=0.2)
+    ax.imshow(rgba, alpha=0.1, interpolation='nearest')
 
-    im = ax.imshow(importance, cmap="plasma")
+    im = ax.imshow(importance, cmap="coolwarm", vmin=-1.0, vmax=1.0, interpolation='nearest')
     im.set_alpha(alpha)
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -207,7 +208,166 @@ def show_and_save_importance(image, importance, name, show=False):
 
     ax.axis("off")
     fig.savefig(f"output/clean/{name}.png", bbox_inches="tight", dpi=100)
+    fig.savefig(f"output/clean/{name}.svg", bbox_inches="tight", format="svg")
 
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def show_trio(c, img1, img2, img3, name1, name2, name3, thr=0.01, show=False, union_only=True):
+    Path(f"output/clean/{c}").mkdir(parents=True, exist_ok=True)
+
+    img1 = np.asarray(img1, dtype=float)
+    img2 = np.asarray(img2, dtype=float)
+    img3 = np.asarray(img3, dtype=float)
+
+    h, w = img3.shape
+
+    def _hitmiss(pred, gt):
+        pred_r = pred >= thr
+        gt_r = gt >= thr
+
+        region = (pred_r | gt_r) if union_only else np.ones_like(gt_r, dtype=bool)
+
+        correct = (pred_r == gt_r) & region
+        wrong = (pred_r != gt_r) & region
+
+        total = int(region.sum())
+        ok = int(correct.sum())
+        return ok, total, correct, wrong
+
+    def _overlay(ax, correct, wrong):
+        ov = np.zeros((h, w, 4), dtype=float)
+        ov[correct] = [0.0, 1.0, 0.0, 0.85]
+        ov[wrong] = [1.0, 0.0, 0.0, 0.85]
+        ax.imshow(ov, interpolation='nearest')
+
+    ok1, tot1, correct1, wrong1 = _hitmiss(img1, img3)
+    ok2, tot2, correct2, wrong2 = _hitmiss(img2, img3)
+
+    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+
+    im0 = ax[0].imshow(img1, cmap=cmap, norm=norm, interpolation='nearest')
+    ax[0].set_title(f"{name1}  ({(ok1 / tot1) * 100:.2f} %)")
+    ax[0].axis("off")
+    _overlay(ax[0], correct1, wrong1)
+
+    ax[1].imshow(img2, cmap=cmap, norm=norm, interpolation='nearest')
+    ax[1].set_title(f"{name2}  ({(ok2 / tot2) * 100:.2f} %)")
+    ax[1].axis("off")
+    _overlay(ax[1], correct2, wrong2)
+
+    ax[2].imshow(img3, cmap=cmap, norm=norm, interpolation='nearest')
+    ax[2].set_title(name3)
+    ax[2].axis("off")
+
+    cbar = fig.colorbar(im0, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
+
+    out_name = f"{name1}_{name2}_{name3}"
+    fig.savefig(f"output/clean/{c}/{out_name}.svg", format="svg", bbox_inches="tight")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def save_cluster(cluster_output, image, name, show=False):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/clean/cluster").mkdir(parents=True, exist_ok=True)
+
+    label_img, clusters = cluster_output
+
+    image = np.asarray(image, dtype=float)
+
+    base_rgba = cmap(norm(image))
+    base_rgba[..., 3] = 0.2
+
+    if label_img.max() == 0:
+        return
+
+    n_classes = label_img.max()
+    rng = np.random.default_rng(42)
+    colors = rng.random((n_classes + 1, 3))
+
+    overlay = np.zeros((*label_img.shape, 4), dtype=float)
+
+    for cls in range(1, n_classes + 1):
+        mask = (label_img == cls)
+        overlay[mask, :3] = colors[cls]
+        overlay[mask, 3] = 1.0
+
+    fig, ax = plt.subplots()
+    ax.imshow(base_rgba, interpolation='nearest')
+    ax.imshow(overlay, interpolation='nearest')
+    ax.axis("off")
+    ax.set_aspect("equal")
+
+    fig.savefig(
+        f"output/clean/cluster/{name}.svg",
+        format="svg",
+        bbox_inches="tight"
+    )
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def show_cluster_window(cluster, image, x1, y1, x2, y2, name, show=False):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/clean/cluster").mkdir(parents=True, exist_ok=True)
+    label_img, clusters_list = cluster
+
+    image = np.asarray(image, dtype=float)
+
+    base_rgba = cmap(norm(image))
+    base_rgba[..., 3] = 0.25
+
+    n_classes = int(label_img.max())
+    if n_classes == 0:
+        fig, ax = plt.subplots()
+        ax.imshow(base_rgba, interpolation='nearest')
+        rect = plt.Rectangle((x1, y1), (x2 - x1), (y2 - y1),
+                             fill=False, linewidth=2.0, edgecolor="yellow")
+        ax.add_patch(rect)
+        ax.axis("off")
+        fig.savefig(f"output/clean/cluster/{name}.svg", format="svg", bbox_inches="tight")
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+        return
+
+    rng = np.random.default_rng(42)
+    colors = rng.random((n_classes + 1, 3))
+
+    overlay = np.zeros((*label_img.shape, 4), dtype=float)
+    for cls in range(1, n_classes + 1):
+        m = (label_img == cls)
+        overlay[m, :3] = colors[cls]
+        overlay[m, 3] = 0.95
+
+    fig, ax = plt.subplots()
+    ax.imshow(base_rgba, interpolation='nearest')
+    ax.imshow(overlay, interpolation='nearest')
+
+    rect = plt.Rectangle((x1, y1), (x2 - x1), (y2 - y1),
+                         fill=False, linewidth=2.0, edgecolor="red")
+    ax.add_patch(rect)
+
+    ax.axis("off")
+    ax.set_aspect("equal")
+
+    fig.savefig(
+        f"output/clean/cluster/{name}.svg",
+        format="svg",
+        bbox_inches="tight"
+    )
     if show:
         plt.show()
     else:
