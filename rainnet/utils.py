@@ -83,13 +83,13 @@ cmap.set_under("white")
 norm = BoundaryNorm(boundaries, ncolors=cmap.N)
 
 
-def show_and_save(img, name, show=False):
+def show_and_save(img, file_name, title, show=False):
     img = np.array(img, dtype=np.float64)
     Path("output").mkdir(parents=True, exist_ok=True)
     Path("output/clean").mkdir(parents=True, exist_ok=True)
     Path("output/detailed").mkdir(parents=True, exist_ok=True)
     # CLEAN VERSION
-    plt.imsave(f"output/clean/{name}.png", cmap(norm(img)))
+    plt.imsave(f"output/clean/{file_name}.png", cmap(norm(img)))
 
     # DETAILED VERSION
     h, w = img.shape
@@ -102,11 +102,11 @@ def show_and_save(img, name, show=False):
     edited_boundaries[0] = 0.01
     cbar = fig.colorbar(im, ax=ax, ticks=edited_boundaries)
     cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
-    ax.set_title(name, fontweight="bold")
+    ax.set_title(title, fontweight="bold")
     ax.set_xlabel("km", fontweight="bold")
     ax.set_ylabel("km", fontweight="bold")
-    fig.savefig(f"output/detailed/{name}.png", dpi=dpi, bbox_inches="tight")
-    fig.savefig(f"output/detailed/{name}.svg", format="svg", bbox_inches="tight")
+    fig.savefig(f"output/detailed/{file_name}.png", dpi=dpi, bbox_inches="tight")
+    fig.savefig(f"output/detailed/{file_name}.svg", format="svg", bbox_inches="tight")
     if show:
         plt.show()
     else:

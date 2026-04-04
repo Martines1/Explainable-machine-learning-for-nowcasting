@@ -1,7 +1,10 @@
+import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 import numpy as np
 import torch
-
+import torch.nn.functional as f
+import math
 import time_series.time_series
 import utils
 from optical_flow.optical_flow import OpticalFlow
@@ -20,6 +23,11 @@ DATA_DIR = current_dir / "data" / data_number
 
 PT_WEIGHTS = current_dir / "model" / "rainnet_torch_converted.pt"
 H5_WEIGHTS = current_dir / "model" / "rainnet.h5"
+
+
+def logcosh_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    x = pred - target
+    return (x + f.softplus(-2.0 * x) - math.log(2.0)).mean()
 
 
 def _load_torch_model():
@@ -56,18 +64,45 @@ def _to_torch_input(X: np.ndarray) -> torch.Tensor:
 def main():
     file_paths = [DATA_DIR / f for f in FILES]
     file_paths = sorted(file_paths, key=lambda f: utils.parse_ts(f.name))
-
+    if len(file_paths) < 4:
+        sys.exit("RainNet requires 4 radar images as an input!")
     print("Used files as input (ordered by time):")
     for p in file_paths:
         print("  ", p.name)
 
     scans = [utils.read_ry_radolan(p) for p in file_paths]
+
+    '''
+    0.75 = 0,75 mm/h zrážok v danom pixeli
+    '''
+
+    ground_truth = None
+    if len(file_paths) == 5:
+        current_file = file_paths[4]
+        ts = utils.parse_ts(current_file.name)
+
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+
+        utils.show_and_save(scans[4].astype("float32"), f'Ground truth', title=f'Ground truth {pretty}')
+    # X_raw shape (C, H, W)
     X_raw = np.stack(scans, axis=0).astype("float32")
+
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
+    for count, image in enumerate(X_raw[:4]):
+        current_file = file_paths[count]
+        ts = utils.parse_ts(current_file.name)
 
-    for count, image in enumerate(X_raw):
-        utils.show_and_save(image, f'input_{count}')
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+        utils.show_and_save(image, f'Input_{count}', f'Input #{count + 1} - {pretty}')
+
+    current_file = file_paths[3]
+    ts = utils.parse_ts(current_file.name)
+    end_dt = datetime.strptime(ts, "%y%m%d%H%M")
+    end_dt_plus5 = end_dt + timedelta(minutes=5)
+    end_dt_plus5 = end_dt_plus5.strftime("%d.%m.%Y %H:%M")
 
     X = data_preprocessing(X_raw[:4])
     assert X.dtype == np.float32
@@ -81,17 +116,26 @@ def main():
     x_t = x_t.to(device)
     with torch.inference_mode():
         y_t = model(x_t)
+    if len(file_paths) == 5:
+        gt_raw = scans[4].astype("float32")
+        gt_proc = data_preprocessing(gt_raw[None, ...], scale=True)
+
+        gt_chw = np.transpose(gt_proc[0], (2, 0, 1))
+        gt_t = torch.from_numpy(gt_chw[None, ...]).to(device)
+
+        with torch.inference_mode():
+            loss_val = logcosh_loss(y_t, gt_t)
+        print("RainNet logcosh loss:", float(loss_val))
     Y_pred = y_t.squeeze(1).cpu().numpy()
     Y_mm = data_postprocessing(Y_pred, False)[0]
     #  Y_mm = data_postprocessing(Y_pred, True)[0]
     scans.append(Y_mm)
 
-    utils.show_and_save(Y_mm, "out")
-    utils.create_gif()
+    utils.show_and_save(Y_mm, "out", title=f"Predicted precipitation {end_dt_plus5}")
+    # utils.create_gif()
 
     # time series part
     # time_series.time_series.vis_time_series(np.stack(scans, axis=0).astype("float32"))
-
 
     # Optical Flow part
     of = OpticalFlow("output/clean/input_0.png", "output/clean/input_3.png", window_size=32, cell=46)

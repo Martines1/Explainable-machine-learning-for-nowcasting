@@ -1,13 +1,14 @@
 from pathlib import Path
 import numpy as np
 import torch
+from pytorch_grad_cam import LayerCAM
 
 import utils
 from gradcam.gradcam import GradCam
 from gradcam.regression_target import RegressionTarget
 from utils import data_preprocessing
 from rainnet_arch import RainNet
-
+import torch.nn as nn
 from convert_from_h5 import load_keras_h5_into_torch
 
 current_file = Path(__file__).resolve()
@@ -33,6 +34,7 @@ def _load_torch_model():
         m = load_keras_h5_into_torch(str(H5_WEIGHTS), in_channels=4)
         m.eval()
         return m
+    return None
 
 
 def _to_torch_input(X: np.ndarray) -> torch.Tensor:
@@ -87,14 +89,15 @@ def main():
 
     model.to(device)
     x_t = x_t.to(device)
-    target = RegressionTarget("mean")
-    gradcam = GradCam(model, x_t, module="conv8f")
-    cams = gradcam.test_one_channel(target)
-    labels = ["t-15", "t-10", "t-5", "t"]
-    for i, cam in enumerate(cams):
-        gradcam.overlay_on_input(X_raw[i], cam, f"OVERLAY_{labels[i]}")
-        print(f"Saved overlay for {labels[i]}")
-    print("All overlays saved in output/")
+    target = RegressionTarget("sum")
+    # for name, module in model.named_modules():
+    #     if isinstance(module, nn.Conv2d):
+    #         print("Running Grad-CAM for module:", name)
+    #         gradcam = GradCam(model, x_t, module=name)
+    #         gradcam.run_per_channel(target)
+    gradcam = GradCam(model, x_t, module="conv8s")
+    gradcam.run_isolated_channels(target)
+    #  gradcam.run_all_channels(target)
 
 
 main()

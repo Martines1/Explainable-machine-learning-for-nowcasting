@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 import numpy as np
 import torch
@@ -72,14 +73,25 @@ def main():
 
     ground_truth = None
     if len(file_paths) == 5:
-        utils.show_and_save(scans[4].astype("float32"), f'Ground truth')
+        current_file = file_paths[4]
+        ts = utils.parse_ts(current_file.name)
+
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+
+        utils.show_and_save(scans[4].astype("float32"), f'Ground truth', title=f'Ground truth {pretty}')
     # X_raw shape (C, H, W)
     X_raw = np.stack(scans, axis=0).astype("float32")
 
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
     for count, image in enumerate(X_raw[:4]):
-        utils.show_and_save(image, f'Input #{count}')
+        current_file = file_paths[count]
+        ts = utils.parse_ts(current_file.name)
+
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+        utils.show_and_save(image, f'Input_{count}', f'Input #{count + 1} - {pretty}')
 
     # data_preprocessing returns (B, H, W, C)
     X = data_preprocessing(X_raw)
@@ -105,8 +117,6 @@ def main():
     rain_thr_log = np.log(0.01 + threshold)
     X1 = np.transpose(X1, (2, 0, 1))
     masks = difference.calculate_diff_unique(X1, 0.0)
-    for i in range(4):
-        utils.show_and_save(X1[i], f'Preprocessed input #{i}')
 
     clusters = []
     for i in range(4):

@@ -1,3 +1,4 @@
+from datetime import datetime
 import sys
 from pathlib import Path
 import numpy as np
@@ -72,14 +73,25 @@ def main():
 
     ground_truth = None
     if len(file_paths) == 5:
-        utils.show_and_save(scans[4].astype("float32"), f'Ground truth')
+        current_file = file_paths[4]
+        ts = utils.parse_ts(current_file.name)
+
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+
+        utils.show_and_save(scans[4].astype("float32"), f'Ground truth', title=f'Ground truth {pretty}')
     # X_raw shape (C, H, W)
     X_raw = np.stack(scans, axis=0).astype("float32")
 
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
     for count, image in enumerate(X_raw[:4]):
-        utils.show_and_save(image, f'Input #{count}')
+        current_file = file_paths[count]
+        ts = utils.parse_ts(current_file.name)
+
+        dt = datetime.strptime(ts, "%y%m%d%H%M")
+        pretty = dt.strftime("%d.%m.%Y %H:%M")
+        utils.show_and_save(image, f'Input_{count}', f'Input #{count+1} - {pretty}')
 
     # for i in range(3):
     #     mask = difference.calculate_diff(X_raw[i], X_raw[i+1], 0.0)
@@ -107,14 +119,18 @@ def main():
     model.to(device)
     x_t = x_t.to(device)
 
-    # for i in range(3):
-    #     pert = Perturbation(model, x_t, device, ground_truth)
-    #     baseline = data_preprocessing(np.zeros_like(X_raw))[0, :, :, 0]
-    #
-    #     pert_result = pert.turn_off_channels([i, i+1], baseline, "accuracy", np.log(0.02))
-    #     print(f'Ground truth base loss: {pert_result["gt_base_diff"] * 100:.2f} %')
-    #     print(f'Ground truth perputated loss {i}: {pert_result["gt_perp_diff"] * 100:.2f} %')
-    #     print()
+    print()
+    print()
+    for i in range(3):
+        for j in range(i+1, 4):
+            print(f"Perturbing channels {i, j}..")
+            pert = Perturbation(model, x_t, device, ground_truth)
+            baseline = data_preprocessing(np.zeros_like(X_raw))[0, :, :, 0]
+
+            pert_result = pert.turn_off_channels([i, j], baseline, "accuracy", np.log(0.02))
+            print(f'Ground truth base loss: {pert_result["gt_base_diff"]:.4f}')
+            print(f'Ground truth perputated loss {i}: {pert_result["gt_perp_diff"]:.4f}')
+            print()
 
     # Y_pert_mm = pert_result["pert_pred"]
 
@@ -122,78 +138,7 @@ def main():
 
     # Y_pert_mm = data_postprocessing(Y_pert_mm, False)[0]
     # utils.show_and_save(Y_pert_mm, "OUT_pert")
-    #
 
-    pert = Perturbation(model, x_t, device, ground_truth)
-    threshold = 0.001
-    baseline = np.log(0.01)
-    rain_thr_log = np.log(0.01 + threshold)
-    X1 = np.transpose(X1, (2, 0, 1))
-    masks = difference.calculate_diff_unique(X1, 0.0)
-    for i in range(4):
-        utils.show_and_save(X1[i], f'Preprocessed input #{i}')
-
-    ## RUN WINDOW
-    # pert_result = pert.perturbate_channels_window(baseline, masks, rain_thr_log, "accuracy", weighted=True)
-    # for i in range(1):
-        # lowest_base, lowest_pert, lowest_gt = pert.getLowest(i, masks)
-        # lowest_base = utils.invScaler(lowest_base)
-        # lowest_pert = utils.invScaler(lowest_pert)
-        # lowest_gt = utils.invScaler(lowest_gt)
-        #
-        # highest_base, highest_pert, highest_gt = pert.getHighest(i, masks)
-        # highest_base = utils.invScaler(highest_base)
-        # highest_pert = utils.invScaler(highest_pert)
-        # highest_gt = utils.invScaler(highest_gt)
-        #
-        # utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "lowest_base", "lowest_pert", "lowest_gt", thr=threshold)
-        # utils.show_trio(i, highest_base, highest_pert, highest_gt, "highest_base", "highest_pert", "highest_gt", thr=threshold)
-        # utils.show_and_save_importance(X1[i], pert_result[i], f"importance_map_{i}", False)
-    # np.save('importance_map.npy', pert_result)
-
-    ## RUN CLUSTER
-    clusters = []
-    for i in range(4):
-        # DBSCAN:
-        # clusters.append(pert.clusterMaskDBSCAN(masks[i], eps=7.0, min_cluster_size=10))
-
-        # KMeans:
-        clusters.append(pert.clusterMaskKMeans(masks[i], n_clusters=3))
-
-        utils.save_cluster(clusters[i], X1[i], f'cluster_{i}')
-
-        x1, y1, x2, y2 = pert.createWindow(clusters[i][1][0], padding=16)
-        utils.show_cluster_window(clusters[i], X1[i], x1, y1, x2, y2, f'cluster_window_{i}')
-    importance = pert.perturbate_channels_cluster(
-        baseline=baseline,
-        masks=masks,
-        thr=rain_thr_log,
-        clusters=clusters,
-        loss="accuracy",
-        weighted=False
-    )
-    for i in range(4):
-        lowest_base, lowest_pert, lowest_gt = pert.getLowest(i, masks)
-        if lowest_base is None or lowest_pert is None or lowest_gt is None:
-            print(f"Channel {i}: No valid perturbation found.")
-        else:
-            lowest_base = utils.invScaler(lowest_base)
-            lowest_pert = utils.invScaler(lowest_pert)
-            lowest_gt = utils.invScaler(lowest_gt)
-            utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "lowest_base", "lowest_pert", "lowest_gt",
-                            thr=threshold)
-
-        highest_base, highest_pert, highest_gt = pert.getHighest(i, masks)
-        if highest_base is None or highest_pert is None or highest_gt is None:
-            print(f"Channel {i}: No valid perturbation found.")
-        else:
-            highest_base = utils.invScaler(highest_base)
-            highest_pert = utils.invScaler(highest_pert)
-            highest_gt = utils.invScaler(highest_gt)
-            utils.show_trio(i, highest_base, highest_pert, highest_gt, "highest_base", "highest_pert", "highest_gt",
-                            thr=threshold)
-
-        utils.show_and_save_importance(X1[i], importance[i], f"importance_map_{i}", False)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import utils
-from IG.ROI.ROI import ROI
-from IG.ROI.ROI_IG import RegressionTargetROI
 from utils import data_preprocessing, data_postprocessing
 from rainnet_arch import RainNet
 from convert_from_h5 import load_keras_h5_into_torch
@@ -69,9 +67,6 @@ def main():
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
 
-    for count, image in enumerate(X_raw):
-        utils.show_and_save(image, f'input_{count}')
-
     X = data_preprocessing(X_raw)[0]
     assert X.dtype == np.float32
     target = RegressionTargetIG(mode="mean")
@@ -98,13 +93,13 @@ def main():
     ig_explainer = IntegratedGradient(model, target)
     available_methods = ["smoothgrad", "smoothgrad_square", "vargrad"]
     # res = ig_explainer.calculate_ig_with_noise(X, baseline=baseline_t, steps=2, n_samples=4, st_devs=0.01, method=available_methods[1])
-    res = ig_explainer.calculate_ig(X, baseline_t, steps=2)
+    res = ig_explainer.calculate_ig(X, baseline_t, steps=50)
     X_chw = np.transpose(X, (2, 0, 1)).astype(np.float32, copy=False)
     x_t_chw = torch.from_numpy(X_chw).to(device)
 
     A = res["attr"]
     print("Convergence:", res["delta"])
-    ig_explainer.show_heatmap(X_raw, A, mode="channel")
+    ig_explainer.show_heatmap(X_raw, A, mode="raw")
     x_t = _to_torch_input(X)
 
     model.to(device)
