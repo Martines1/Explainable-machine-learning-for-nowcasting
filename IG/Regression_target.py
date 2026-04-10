@@ -16,6 +16,8 @@ class RegressionTargetIG:
                 return y.mean(dim=(1, 2), keepdim=True)
             case "max":
                 return y.amax(dim=(1, 2), keepdim=True)
+            case "sum":
+                return y.sum(dim=(1, 2), keepdim=True)
             case "topk":
                 k = max(1, int(self.k_value * y.numel()))
                 vals, _ = torch.topk(y.reshape(B, -1), k, dim=1)

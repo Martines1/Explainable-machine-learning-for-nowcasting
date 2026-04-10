@@ -118,15 +118,17 @@ def main():
     X1 = np.transpose(X1, (2, 0, 1))
     masks = difference.calculate_diff_unique(X1, 0.0)
 
+    difference.compare_all(X1, 0.0, 2)
+
     clusters = []
     for i in range(4):
         # DBSCAN:
-        # clusters.append(pert.clusterMaskDBSCAN(masks[i], eps=7.0, min_cluster_size=10))
+        clusters.append(pert.cluster_mask_dbscan(masks[i], eps=20.0, min_cluster_size=10))
 
         # KMeans:
-        clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=3))
+        # clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=5))
 
-        utils.save_cluster(clusters[i], X1[i], f'cluster_{i}')
+        utils.save_cluster(clusters[i], X1[i], f'cluster_{i}', f'DBSCAN clustering of channel {i+1}')
 
         x1, y1, x2, y2 = pert.create_window(clusters[i][1][0], padding=16)
         utils.show_cluster_window(clusters[i], X1[i], x1, y1, x2, y2, f'cluster_window_{i}')

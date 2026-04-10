@@ -275,13 +275,14 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, thr=0.01, show=False, un
         plt.close(fig)
 
 
-def save_cluster(cluster_output, image, name, show=False):
+def save_cluster(cluster_output, image, name, title, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
     Path("output/clean/cluster").mkdir(parents=True, exist_ok=True)
 
     label_img, clusters = cluster_output
 
     image = np.asarray(image, dtype=float)
+    h, w = label_img.shape
 
     base_rgba = cmap(norm(image))
     base_rgba[..., 3] = 0.2
@@ -301,10 +302,34 @@ def save_cluster(cluster_output, image, name, show=False):
         overlay[mask, 3] = 1.0
 
     fig, ax = plt.subplots()
-    ax.imshow(base_rgba, interpolation='nearest')
-    ax.imshow(overlay, interpolation='nearest')
-    ax.axis("off")
+
+    ax.imshow(
+        base_rgba,
+        interpolation='nearest',
+        origin='upper',
+        extent=[0, w, 0, h]
+    )
+
+    im = ax.imshow(
+        overlay,
+        interpolation='nearest',
+        origin='upper',
+        extent=[0, w, 0, h]
+    )
+
+    ax.set_xlabel("X (pixels)", fontweight="bold")
+    ax.set_ylabel("Y (pixels)", fontweight="bold")
+    ax.set_title(title, fontweight="bold")
     ax.set_aspect("equal")
+
+    ax.set_xlim(0, w)
+    ax.set_ylim(0, h)
+    ax.set_xticks(np.arange(0, w + 1, 200))
+    ax.set_yticks(np.arange(0, h + 1, 200))
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_ticks([])
+    cbar.set_label("Cluster ID", fontweight="bold")
 
     fig.savefig(
         f"output/clean/cluster/{name}.svg",

@@ -13,6 +13,8 @@ class RegressionTarget:
                 return y.mean()
             case "max":
                 return y.max()
+            case "sum":
+                return y.sum()
             case "topk":
                 k = max(1, int(self.k_value * y.numel()))
                 vals, _ = torch.topk(y.reshape(-1), k)

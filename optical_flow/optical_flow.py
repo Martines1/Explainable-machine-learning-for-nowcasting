@@ -137,13 +137,43 @@ class OpticalFlow:
         p2n = (unit * length) + p0_flat
         return p0_flat, p2n
 
-    def draw(self, frame, p0, p1):
-        frame = cv2.imread(frame)
+    def draw(self, frame, p0, p1, title="Optical Flow on the last channel"):
+        import matplotlib.pyplot as plt
+
+        frame_img = cv2.imread(frame)
+        frame_rgb = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
+
         for (pt1, pt2) in zip(p0, p1):
             x1, y1 = pt1.ravel()
             x2, y2 = pt2.ravel()
-            cv2.arrowedLine(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 2, tipLength=0.3)
-        cv2.imshow("Lucas-Kanade flow", frame)
-        cv2.imwrite("flow.png", frame)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+            cv2.arrowedLine(frame_img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 2, tipLength=0.3)
+
+        frame_rgb = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
+
+        fig, ax = plt.subplots(figsize=(14, 14), dpi=100)
+        ax.imshow(frame_rgb, interpolation='nearest')
+
+        if title is not None:
+            ax.set_title(title, fontsize=24, fontweight='bold')
+
+        ax.set_xlabel('X (pixels)', fontsize=16)
+        ax.set_ylabel('Y (pixels)', fontsize=16)
+        ax.tick_params(labelsize=14)
+        ax.grid(True, alpha=0.3)
+        h, w = frame_rgb.shape[:2]
+
+        ax.set_xlim(0, w)
+        ax.set_ylim(h, 0)
+
+        yticks = ax.get_yticks()
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([f"{int(h - y)}" for y in yticks])
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+
+        from pathlib import Path
+        Path("output").mkdir(parents=True, exist_ok=True)
+        plt.savefig("flow.png", dpi=100, bbox_inches='tight')
+        plt.close()
+
+

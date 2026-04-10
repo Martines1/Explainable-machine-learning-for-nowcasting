@@ -204,11 +204,12 @@ class ClusterPerturbation:
         )
         labels = db.fit_predict(coords)
         unique = [lab for lab in np.unique(labels) if lab != -1]
+        print(f"Number of clusters: {len(unique)}")
 
         label_img = np.zeros(mask.shape, dtype=np.int32)
         clusters = []
         for class_id, lab in enumerate(unique, start=1):
-            pts = coords[labels == lab]  # (Mi, 2)
+            pts = coords[labels == lab]
             if pts.shape[0] < int(min_cluster_size):
                 continue
 
