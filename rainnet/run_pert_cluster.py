@@ -121,17 +121,19 @@ def main():
     difference.compare_all(X1, 0.0, 2)
 
     clusters = []
+    method = "kmeans"
     for i in range(4):
         # DBSCAN:
-        clusters.append(pert.cluster_mask_dbscan(masks[i], eps=20.0, min_cluster_size=10))
+        #  clusters.append(pert.cluster_mask_dbscan(masks[i], eps=20.0, min_cluster_size=10))
 
         # KMeans:
-        # clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=5))
+        clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=2))
 
         utils.save_cluster(clusters[i], X1[i], f'cluster_{i}', f'DBSCAN clustering of channel {i+1}')
 
         x1, y1, x2, y2 = pert.create_window(clusters[i][1][0], padding=16)
         utils.show_cluster_window(clusters[i], X1[i], x1, y1, x2, y2, f'cluster_window_{i}')
+
     importance = pert.perturbate_channels(
         baseline=baseline,
         masks=masks,
@@ -140,6 +142,7 @@ def main():
         loss="accuracy",
         weighted=False
     )
+
     for i in range(4):
         lowest_base, lowest_pert, lowest_gt = pert.get_lowest(i, masks, baseline=baseline)
         if lowest_base is None or lowest_pert is None or lowest_gt is None:
@@ -148,8 +151,8 @@ def main():
             lowest_base = utils.invScaler(lowest_base)
             lowest_pert = utils.invScaler(lowest_pert)
             lowest_gt = utils.invScaler(lowest_gt)
-            utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "lowest_base", "lowest_pert", "lowest_gt",
-                            thr=threshold)
+            utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "Lowest base", "Lowest perturbation", "Ground truth"
+                            , method, thr=threshold)
 
         highest_base, highest_pert, highest_gt = pert.get_highest(i, masks, baseline=baseline)
         if highest_base is None or highest_pert is None or highest_gt is None:
@@ -158,10 +161,21 @@ def main():
             highest_base = utils.invScaler(highest_base)
             highest_pert = utils.invScaler(highest_pert)
             highest_gt = utils.invScaler(highest_gt)
-            utils.show_trio(i, highest_base, highest_pert, highest_gt, "highest_base", "highest_pert", "highest_gt",
-                            thr=threshold)
-
-        utils.show_and_save_importance(X1[i], importance[i], f"importance_map_{i}", False)
+            utils.show_trio(i, highest_base, highest_pert, highest_gt, "Highest base", "Highest perturbation",
+                            "Ground truth", method, thr=threshold)
+        if method == "dbscan":
+            utils.show_and_save_importance(X1[i], importance[i], f"dbscan_importance_map_{i}",
+                                           f"Perturbation of channel {i+1} using DBSCAN clustering", False)
+        else:
+            utils.show_and_save_importance(X1[i], importance[i], f"kmeans_importance_map_{i}",
+                                           f"Perturbation of channel {i+1} using K-means clustering", False)
+    if method == "dbscan":
+        utils.save_importance_grid(X1, importance, "dbscan_importance_map_grid",
+                                   "Perturbation of channels using DBSCAN clustering")
+    else:
+        utils.save_importance_grid(X1, importance, "kmeans_importance_map_grid",
+                                   "Perturbation of channels using K-means clustering")
+    np.save('importance_map_cluster.npy', importance)
 
 
 if __name__ == "__main__":

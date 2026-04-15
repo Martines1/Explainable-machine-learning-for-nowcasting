@@ -6,6 +6,7 @@ from wradlib import io as wio
 from pathlib import Path
 import os
 import re
+from matplotlib.patches import Patch
 
 
 def parse_ts(fname: str) -> str:
@@ -187,28 +188,63 @@ def getData(number):
     return data
 
 
-def show_and_save_importance(image, importance, name, show=False):
+def show_and_save_importance(image, importance, name, title, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
     Path("output/clean").mkdir(parents=True, exist_ok=True)
-    rgba = cmap(norm(image))
 
+    if "window" in name.split("_"):
+        Path("output/clean/window_perturbation").mkdir(parents=True, exist_ok=True)
+        path_method = "window_perturbation"
+    elif "kmeans" in name.split("_"):
+        Path("output/clean/kmeans").mkdir(parents=True, exist_ok=True)
+        path_method = "kmeans"
+    else:
+        Path("output/clean/dbscan").mkdir(parents=True, exist_ok=True)
+        path_method = "dbscan"
+
+    rgba = cmap(norm(image))
     importance = np.asarray(importance, dtype=float)
+    h, w = importance.shape
 
     alpha = np.zeros_like(importance, dtype=float)
     alpha[importance != 0.0] = 1.0
 
     fig, ax = plt.subplots()
-    ax.imshow(rgba, alpha=0.1, interpolation='nearest')
 
-    im = ax.imshow(importance, cmap="coolwarm", vmin=-1.0, vmax=1.0, interpolation='nearest')
+    ax.imshow(
+        rgba,
+        alpha=0.1,
+        interpolation='nearest',
+        origin='upper',
+        extent=(0, w, 0, h)
+    )
+
+    ax.set_title(title, fontweight="bold", fontsize=16)
+    ax.set_xlabel("X (pixels)", fontsize=16)
+    ax.set_ylabel("Y (pixels)", fontsize=16)
+    ax.tick_params(labelsize=14)
+
+    im = ax.imshow(
+        importance,
+        cmap="coolwarm",
+        vmin=-1.0,
+        vmax=1.0,
+        interpolation='nearest',
+        origin='upper',
+        extent=(0, w, 0, h)
+    )
     im.set_alpha(alpha)
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Importance", fontsize=9)
+    ax.set_xlim(0, w)
+    ax.set_ylim(0, h)
+    ax.set_xticks(np.arange(0, w + 1, 200))
+    ax.set_yticks(np.arange(0, h + 1, 200))
 
-    ax.axis("off")
-    fig.savefig(f"output/clean/{name}.png", bbox_inches="tight", dpi=100)
-    fig.savefig(f"output/clean/{name}.svg", bbox_inches="tight", format="svg")
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Importance", fontsize=16)
+
+    fig.savefig(f"output/clean/{path_method}/{name}.png", bbox_inches="tight", dpi=100)
+    fig.savefig(f"output/clean/{path_method}/{name}.svg", bbox_inches="tight", format="svg")
 
     if show:
         plt.show()
@@ -216,8 +252,10 @@ def show_and_save_importance(image, importance, name, show=False):
         plt.close(fig)
 
 
-def show_trio(c, img1, img2, img3, name1, name2, name3, thr=0.01, show=False, union_only=True):
-    Path(f"output/clean/{c}").mkdir(parents=True, exist_ok=True)
+def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, show=False, union_only=True):
+    Path("output/perturbation").mkdir(parents=True, exist_ok=True)
+    Path(f"output/perturbation/{method}").mkdir(parents=True, exist_ok=True)
+    Path(f"output/perturbation/{method}/{c}").mkdir(parents=True, exist_ok=True)
 
     img1 = np.asarray(img1, dtype=float)
     img2 = np.asarray(img2, dtype=float)
@@ -236,38 +274,85 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, thr=0.01, show=False, un
 
         total = int(region.sum())
         ok = int(correct.sum())
-        return ok, total, correct, wrong
+        return ok, total, correct, wrong, region
 
-    def _overlay(ax, correct, wrong):
+    def _change_quality(original, perturbated, gt):
+        orig_r = original >= thr
+        pert_r = perturbated >= thr
+        gt_r = gt >= thr
+
+        region = (orig_r | pert_r | gt_r) if union_only else np.ones_like(gt_r, dtype=bool)
+
+        orig_correct = (orig_r == gt_r) & region
+        pert_correct = (pert_r == gt_r) & region
+
+        changed = (orig_r != pert_r) & region
+
+        changed_to_worse = changed & orig_correct & (~pert_correct)
+        changed_to_better = changed & (~orig_correct) & pert_correct
+
+        return changed_to_worse, changed_to_better
+
+    def _overlay(ax, correct, wrong, changed_bad=None, changed_good=None):
         ov = np.zeros((h, w, 4), dtype=float)
         ov[correct] = [0.0, 1.0, 0.0, 0.85]
         ov[wrong] = [1.0, 0.0, 0.0, 0.85]
+
+        if changed_bad is not None:
+            ov[changed_bad] = [0.0, 0.0, 0.0, 0.95]
+
+        if changed_good is not None:
+            ov[changed_good] = [0.0, 0.0, 1.0, 0.95]
+
         ax.imshow(ov, interpolation='nearest')
 
-    ok1, tot1, correct1, wrong1 = _hitmiss(img1, img3)
-    ok2, tot2, correct2, wrong2 = _hitmiss(img2, img3)
+    ok1, tot1, correct1, wrong1, region1 = _hitmiss(img1, img3)
+    ok2, tot2, correct2, wrong2, region2 = _hitmiss(img2, img3)
+
+    changed_bad, changed_good = _change_quality(img1, img2, img3)
 
     fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+    fig.suptitle(f"Channel {c + 1} difference", fontsize=16, fontweight="bold")
 
     im0 = ax[0].imshow(img1, cmap=cmap, norm=norm, interpolation='nearest')
-    ax[0].set_title(f"{name1}  ({(ok1 / tot1) * 100:.2f} %)")
+    ax[0].set_title(f"{name1} ({(ok1 / tot1) * 100:.2f} %)")
     ax[0].axis("off")
     _overlay(ax[0], correct1, wrong1)
 
     ax[1].imshow(img2, cmap=cmap, norm=norm, interpolation='nearest')
-    ax[1].set_title(f"{name2}  ({(ok2 / tot2) * 100:.2f} %)")
+    ax[1].set_title(f"{name2} ({(ok2 / tot2) * 100:.2f} %)")
     ax[1].axis("off")
-    _overlay(ax[1], correct2, wrong2)
+    _overlay(ax[1], correct2, wrong2, changed_bad, changed_good)
 
     ax[2].imshow(img3, cmap=cmap, norm=norm, interpolation='nearest')
     ax[2].set_title(name3)
     ax[2].axis("off")
 
+    legend_handles = [
+        Patch(facecolor="red", edgecolor="red", label="Wrong"),
+        Patch(facecolor="green", edgecolor="green", label="Correct"),
+        Patch(facecolor="black", edgecolor="black", label="Changed to worse"),
+        Patch(facecolor="blue", edgecolor="blue", label="Changed to better"),
+    ]
+
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center",
+        ncol=4,
+        fontsize=10,
+        frameon=True,
+        bbox_to_anchor=(0.5, -0.02)
+    )
+
     cbar = fig.colorbar(im0, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
 
     out_name = f"{name1}_{name2}_{name3}"
-    fig.savefig(f"output/clean/{c}/{out_name}.svg", format="svg", bbox_inches="tight")
+    fig.savefig(
+        f"output/perturbation/{method}/{c}/{out_name}.svg",
+        format="svg",
+        bbox_inches="tight"
+    )
 
     if show:
         plt.show()
@@ -277,7 +362,8 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, thr=0.01, show=False, un
 
 def save_cluster(cluster_output, image, name, title, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
-    Path("output/clean/cluster").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation/cluster").mkdir(parents=True, exist_ok=True)
 
     label_img, clusters = cluster_output
 
@@ -307,14 +393,14 @@ def save_cluster(cluster_output, image, name, title, show=False):
         base_rgba,
         interpolation='nearest',
         origin='upper',
-        extent=[0, w, 0, h]
+        extent=(0, w, 0, h)
     )
 
     im = ax.imshow(
         overlay,
         interpolation='nearest',
         origin='upper',
-        extent=[0, w, 0, h]
+        extent=(0, w, 0, h)
     )
 
     ax.set_xlabel("X (pixels)", fontweight="bold")
@@ -332,7 +418,7 @@ def save_cluster(cluster_output, image, name, title, show=False):
     cbar.set_label("Cluster ID", fontweight="bold")
 
     fig.savefig(
-        f"output/clean/cluster/{name}.svg",
+        f"output/perturbation/cluster/{name}.svg",
         format="svg",
         bbox_inches="tight"
     )
@@ -345,23 +431,70 @@ def save_cluster(cluster_output, image, name, title, show=False):
 
 def show_cluster_window(cluster, image, x1, y1, x2, y2, name, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
-    Path("output/clean/cluster").mkdir(parents=True, exist_ok=True)
-    label_img, clusters_list = cluster
+    Path(f"output/perturbation").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation/cluster").mkdir(parents=True, exist_ok=True)
 
+    label_img, clusters_list = cluster
     image = np.asarray(image, dtype=float)
+
+    h, w = label_img.shape
+
+    crop_w = w // 2
+    crop_h = h // 2
+
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+
+    left = int(round(cx - crop_w / 2))
+    right = left + crop_w
+    top = int(round(cy - crop_h / 2))
+    bottom = top + crop_h
+
+    if left < 0:
+        left = 0
+        right = crop_w
+    if right > w:
+        right = w
+        left = w - crop_w
+    if top < 0:
+        top = 0
+        bottom = crop_h
+    if bottom > h:
+        bottom = h
+        top = h - crop_h
+
+    left = max(0, left)
+    right = min(w, right)
+    top = max(0, top)
+    bottom = min(h, bottom)
 
     base_rgba = cmap(norm(image))
     base_rgba[..., 3] = 0.25
 
     n_classes = int(label_img.max())
+
+    fig, ax = plt.subplots()
+
     if n_classes == 0:
-        fig, ax = plt.subplots()
         ax.imshow(base_rgba, interpolation='nearest')
-        rect = plt.Rectangle((x1, y1), (x2 - x1), (y2 - y1),
-                             fill=False, linewidth=2.0, edgecolor="yellow")
+
+        rect = plt.Rectangle(
+            (x1, y1), (x2 - x1), (y2 - y1),
+            fill=False, linewidth=2.0, edgecolor="yellow"
+        )
         ax.add_patch(rect)
+
+        ax.set_xlim(left, right)
+        ax.set_ylim(bottom, top)
         ax.axis("off")
-        fig.savefig(f"output/clean/cluster/{name}.svg", format="svg", bbox_inches="tight")
+        ax.set_aspect("equal")
+
+        fig.savefig(
+            f"output/perturbation/cluster/{name}.svg",
+            format="svg",
+            bbox_inches="tight"
+        )
+
         if show:
             plt.show()
         else:
@@ -377,23 +510,113 @@ def show_cluster_window(cluster, image, x1, y1, x2, y2, name, show=False):
         overlay[m, :3] = colors[cls]
         overlay[m, 3] = 0.95
 
-    fig, ax = plt.subplots()
     ax.imshow(base_rgba, interpolation='nearest')
     ax.imshow(overlay, interpolation='nearest')
 
-    rect = plt.Rectangle((x1, y1), (x2 - x1), (y2 - y1),
-                         fill=False, linewidth=2.0, edgecolor="red")
+    rect = plt.Rectangle(
+        (x1, y1), (x2 - x1), (y2 - y1),
+        fill=False, linewidth=2.0, edgecolor="red"
+    )
     ax.add_patch(rect)
 
+    ax.set_xlim(left, right)
+    ax.set_ylim(bottom, top)
     ax.axis("off")
     ax.set_aspect("equal")
 
     fig.savefig(
-        f"output/clean/cluster/{name}.svg",
+        f"output/perturbation/cluster/{name}.svg",
         format="svg",
         bbox_inches="tight"
     )
+
     if show:
         plt.show()
     else:
         plt.close(fig)
+
+
+def save_importance_grid(data, pert_result, file_name, title):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation").mkdir(parents=True, exist_ok=True)
+
+    if "window" in file_name.split("_"):
+        Path("output/perturbation/window_perturbation").mkdir(parents=True, exist_ok=True)
+        path_method = "window_perturbation"
+    elif "kmeans" in file_name.split("_"):
+        Path("output/perturbation/kmeans").mkdir(parents=True, exist_ok=True)
+        path_method = "kmeans"
+    else:
+        Path("output/perturbation/dbscan").mkdir(parents=True, exist_ok=True)
+        path_method = "dbscan"
+
+    frames = np.asarray(data, dtype=float)
+    importances = np.asarray(pert_result, dtype=float)
+
+    if frames.ndim == 4 and frames.shape[0] == 1:
+        frames = frames[0]
+    if importances.ndim == 4 and importances.shape[0] == 1:
+        importances = importances[0]
+    if frames.ndim == 3 and frames.shape[-1] == 1:
+        frames = frames[..., 0]
+    if importances.ndim == 3 and importances.shape[-1] == 1:
+        importances = importances[..., 0]
+
+    C, h, w = frames.shape
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+    axes_flat = axes.flatten()
+
+    last_im = None
+
+    for i in range(4):
+        ax = axes_flat[i]
+
+        if i < C:
+            rgba = cmap(norm(frames[i]))
+            importance = np.asarray(importances[i], dtype=float)
+
+            alpha = np.zeros_like(importance, dtype=float)
+            alpha[importance != 0.0] = 1.0
+
+            ax.imshow(
+                rgba,
+                alpha=0.1,
+                interpolation='nearest',
+                origin='upper',
+                extent=[0, w, 0, h]
+            )
+
+            im = ax.imshow(
+                importance,
+                cmap="bwr",
+                vmin=-1.0,
+                vmax=1.0,
+                interpolation='nearest',
+                origin='upper',
+                extent=[0, w, 0, h]
+            )
+            im.set_alpha(alpha)
+            last_im = im
+
+            ax.set_title(f"Channel {i + 1}", fontweight="bold", fontsize=16)
+            ax.set_xlabel("X (pixels)", fontsize=16)
+            ax.set_ylabel("Y (pixels)", fontsize=16)
+            ax.tick_params(labelsize=14)
+            ax.set_xlim(0, w)
+            ax.set_ylim(0, h)
+            ax.set_xticks(np.arange(0, w + 1, 200))
+            ax.set_yticks(np.arange(0, h + 1, 200))
+        else:
+            ax.axis("off")
+
+    fig.suptitle(title, fontweight="bold", fontsize=18)
+
+    cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.03, pad=0.08)
+    cbar.set_label("Importance", fontsize=16)
+    cbar.ax.tick_params(labelsize=14)
+
+    fig.tight_layout(rect=(0, 0, 0.88, 0.96))
+    fig.savefig(f"output/perturbation/{path_method}/{file_name}.png", bbox_inches="tight", dpi=100)
+    fig.savefig(f"output/perturbation/{path_method}/{file_name}.svg", bbox_inches="tight", format="svg")
+    plt.close(fig)

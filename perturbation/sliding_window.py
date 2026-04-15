@@ -19,7 +19,7 @@ class SlidingWindowPerturbation:
             y_t = self.model(x)
         return y_t.detach().cpu().numpy()[0, 0, :, :]
 
-    def perturbate_channels(self, baseline, masks, thr, loss="logcosh", window=128, stride=32, weighted=False):
+    def perturbate_channels(self, baseline, masks, thr, loss="logcosh", window=256, stride=96, weighted=False):
         base_input = self.input.detach().cpu().numpy()
         b, c, h, w = base_input.shape
 
@@ -33,6 +33,8 @@ class SlidingWindowPerturbation:
 
         imp_sum = np.zeros((c, h, w), dtype=np.float32)
         imp_cnt = np.zeros((c, h, w), dtype=np.float32)
+
+        whole_counter = 0
 
         print(f"Starting window perturbation for {c} channels")
         for ch in range(c):
@@ -49,6 +51,7 @@ class SlidingWindowPerturbation:
                         continue
 
                     internal_counter += 1
+                    whole_counter += 1
                     print(f'Processing channel {ch}, done {(internal_counter / max(counter[ch], 1)) * 100:.2f} %')
 
                     gt_mask = self.ground_truth[y:y2, x:x2]
@@ -89,6 +92,8 @@ class SlidingWindowPerturbation:
         self.normalize_importance(importance, support)
 
         self.importance = importance
+
+        print(f"Total number of operations: {whole_counter}")
         return importance
 
     def get_counter(self, masks, window, stride, h, w):

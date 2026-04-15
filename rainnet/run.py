@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as f
 import math
+import time
 import time_series.time_series
 import utils
 from optical_flow.optical_flow import OpticalFlow
@@ -104,6 +105,7 @@ def main():
     end_dt_plus5 = end_dt + timedelta(minutes=5)
     end_dt_plus5 = end_dt_plus5.strftime("%d.%m.%Y %H:%M")
 
+    time_whole = time.time()
     X = data_preprocessing(X_raw[:4])
     assert X.dtype == np.float32
     model = _load_torch_model()
@@ -114,8 +116,24 @@ def main():
 
     model.to(device)
     x_t = x_t.to(device)
+    start_pure_time = time.time()
     with torch.inference_mode():
         y_t = model(x_t)
+    elapsed_time = time.time() - start_pure_time
+    minutes = int(elapsed_time // 60)
+    seconds = elapsed_time % 60
+    print(f"\nExecution time: {minutes}m {seconds:.2f}s ({elapsed_time:.2f}s total)")
+
+    Y_pred = y_t.squeeze(1).cpu().numpy()
+    Y_mm = data_postprocessing(Y_pred, False)[0]
+
+    elapsed_whole_time = time.time() - time_whole
+    whole_minutes = int(elapsed_whole_time // 60)
+    whole_seconds = elapsed_whole_time % 60
+
+    print(f"\nExecution time with processing: {whole_minutes}m {whole_seconds:.2f}s ("
+          f"{elapsed_whole_time:.2f}s total)")
+
     if len(file_paths) == 5:
         gt_raw = scans[4].astype("float32")
         gt_proc = data_preprocessing(gt_raw[None, ...], scale=True)
@@ -126,8 +144,7 @@ def main():
         with torch.inference_mode():
             loss_val = logcosh_loss(y_t, gt_t)
         print("RainNet logcosh loss:", float(loss_val))
-    Y_pred = y_t.squeeze(1).cpu().numpy()
-    Y_mm = data_postprocessing(Y_pred, False)[0]
+
     #  Y_mm = data_postprocessing(Y_pred, True)[0]
     scans.append(Y_mm)
 
@@ -138,9 +155,11 @@ def main():
     # time_series.time_series.vis_time_series(np.stack(scans, axis=0).astype("float32"))
 
     # Optical Flow part
-    of = OpticalFlow("output/clean/input_0.png", "output/clean/input_3.png", window_size=32, cell=46)
-    good0, good1 = of.calculate()
-    of.draw("output/clean/input_3.png", good0, good1)
+    # of = OpticalFlow("output/clean/input_0.png", "output/clean/input_3.png", window_size=32, cell=46)
+    # good0, good1 = of.calculate()
+    # of.draw("output/clean/input_3.png", good0, good1)
+
+    # Print execution time
 
 
 if __name__ == "__main__":
