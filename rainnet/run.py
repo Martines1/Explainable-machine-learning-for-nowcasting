@@ -11,7 +11,7 @@ import utils
 from optical_flow.optical_flow import OpticalFlow
 from utils import data_preprocessing, data_postprocessing
 from rainnet_arch import RainNet
-
+from perturbation.loss_functions import LogCosh, MSE, BMSE, RainAccuracy
 from convert_from_h5 import load_keras_h5_into_torch
 
 current_file = Path(__file__).resolve()
@@ -145,14 +145,29 @@ def main():
             loss_val = logcosh_loss(y_t, gt_t)
         print("RainNet logcosh loss:", float(loss_val))
 
+        pred_np = y_t.squeeze(1).cpu().numpy()[0]
+        gt_np = gt_t.squeeze(1).cpu().numpy()[0]
+        gt_mm = data_postprocessing(gt_np[None, ...], False)[0]
+
+        mse_val = MSE().calculate(pred_np, gt_np, no_rain=None)
+        bmse_val = BMSE().calculate(pred_np, gt_np, no_rain=0.01)
+        rain_acc_val = RainAccuracy().calculate(Y_mm, gt_mm, no_rain=0.01)
+        logcsosh_val = LogCosh().calculate(pred_np, gt_np)
+        print("RainNet MSE:", mse_val)
+        print("RainNet balanced MSE:", bmse_val)
+        print("RainNet rain accuracy:", rain_acc_val)
+        print("LogCosh:", logcsosh_val)
     #  Y_mm = data_postprocessing(Y_pred, True)[0]
-    scans.append(Y_mm)
+    #  scans.append(Y_mm)
 
     utils.show_and_save(Y_mm, "out", title=f"Predicted precipitation {end_dt_plus5}")
     # utils.create_gif()
 
-    # time series part
-    # time_series.time_series.vis_time_series(np.stack(scans, axis=0).astype("float32"))
+    inputs_ts = data_preprocessing(X_raw[:4], scale=False)[0]
+    inputs_ts = np.transpose(inputs_ts, (2, 0, 1)).astype("float32")
+
+    scans_for_ts = list(inputs_ts) + [Y_mm.astype("float32")]
+    time_series.time_series.vis_time_series(np.stack(scans_for_ts, axis=0).astype("float32"))
 
     # Optical Flow part
     # of = OpticalFlow("output/clean/input_0.png", "output/clean/input_3.png", window_size=32, cell=46)

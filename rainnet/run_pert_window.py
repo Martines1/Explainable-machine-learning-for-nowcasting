@@ -148,7 +148,11 @@ def main():
     pert_result = pert.perturbate_channels(baseline, masks, rain_thr_log, "accuracy", weighted=True)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"\nProcessing time: {elapsed_time:.2f} seconds ({elapsed_time / 60:.2f} minutes)")
+
+    minutes = int(elapsed_time // 60)
+    seconds = int(round(elapsed_time % 60))
+
+    print(f"\nProcessing time: {minutes} min {seconds} s")
 
     for i in range(4):
         lowest_base, lowest_pert, lowest_gt = pert.getLowest(i, masks)
@@ -161,9 +165,9 @@ def main():
         highest_pert = utils.invScaler(highest_pert)
         highest_gt = utils.invScaler(highest_gt)
 
-        utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "lowest_base", "lowest_pert", "lowest_gt",
+        utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "Base", "Lowest perturbation", "Ground truth",
                         "window_perturbation", thr=threshold)
-        utils.show_trio(i, highest_base, highest_pert, highest_gt, "highest_base", "highest_pert", "highest_gt",
+        utils.show_trio(i, highest_base, highest_pert, highest_gt, "Base", "Highest perturbation", "Ground truth",
                         "window_perturbation", thr=threshold)
         utils.show_and_save_importance(X1[i], pert_result[i], f"window_importance_map_{i}",
                                        f"Perturbation of channel {i + 1} using sliding window", False)

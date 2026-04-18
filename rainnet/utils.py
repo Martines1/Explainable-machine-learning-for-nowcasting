@@ -2,6 +2,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.ticker import MultipleLocator
 from wradlib import io as wio
 from pathlib import Path
 import os
@@ -89,29 +90,45 @@ def show_and_save(img, file_name, title, show=False):
     Path("output").mkdir(parents=True, exist_ok=True)
     Path("output/clean").mkdir(parents=True, exist_ok=True)
     Path("output/detailed").mkdir(parents=True, exist_ok=True)
-    # CLEAN VERSION
+
     plt.imsave(f"output/clean/{file_name}.png", cmap(norm(img)))
 
-    # DETAILED VERSION
     h, w = img.shape
     dpi = 100
     fig = plt.figure(figsize=(w / dpi, h / dpi), dpi=dpi)
     ax = fig.add_subplot(1, 1, 1)
 
-    im = ax.imshow(img, cmap=cmap, norm=norm, interpolation='nearest')
+    im = ax.imshow(
+        img,
+        cmap=cmap,
+        norm=norm,
+        interpolation='nearest',
+        origin='upper',
+        extent=(0, w, 0, h)
+    )
+
     edited_boundaries = boundaries.copy()
     edited_boundaries[0] = 0.01
     cbar = fig.colorbar(im, ax=ax, ticks=edited_boundaries)
-    cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
-    ax.set_title(title, fontweight="bold")
-    ax.set_xlabel("km", fontweight="bold")
-    ax.set_ylabel("km", fontweight="bold")
+    cbar.set_label("Rain intensity [mm / h]", fontsize=15, fontweight="bold")
+
+    ax.set_title(title, fontsize=18, fontweight="bold")
+    ax.set_xlabel("X (pixels)", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Y (pixels)", fontsize=13, fontweight="bold")
+
+    ax.set_xlim(0, w)
+    ax.set_ylim(0, h)
+    ax.set_xticks(np.arange(0, w + 1, 200))
+    ax.set_yticks(np.arange(0, h + 1, 200))
+    ax.tick_params(axis='both', labelsize=13)
+
     fig.savefig(f"output/detailed/{file_name}.png", dpi=dpi, bbox_inches="tight")
     fig.savefig(f"output/detailed/{file_name}.svg", format="svg", bbox_inches="tight")
+
     if show:
         plt.show()
     else:
-        plt.close()
+        plt.close(fig)
 
 
 def show_and_save_mask(img, mask, name, show=False):
@@ -252,7 +269,7 @@ def show_and_save_importance(image, importance, name, title, show=False):
         plt.close(fig)
 
 
-def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, show=False, union_only=True):
+def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, union_only=True):
     Path("output/perturbation").mkdir(parents=True, exist_ok=True)
     Path(f"output/perturbation/{method}").mkdir(parents=True, exist_ok=True)
     Path(f"output/perturbation/{method}/{c}").mkdir(parents=True, exist_ok=True)
@@ -263,33 +280,27 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, show=F
 
     h, w = img3.shape
 
-    def _hitmiss(pred, gt):
-        pred_r = pred >= thr
-        gt_r = gt >= thr
-
-        region = (pred_r | gt_r) if union_only else np.ones_like(gt_r, dtype=bool)
-
-        correct = (pred_r == gt_r) & region
-        wrong = (pred_r != gt_r) & region
-
-        total = int(region.sum())
+    def _evaluate(pred_r, gt_r, region):
+        correct = pred_r & gt_r & region
+        wrong = (pred_r ^ gt_r) & region
+        total = int(correct.sum() + wrong.sum())
         ok = int(correct.sum())
-        return ok, total, correct, wrong, region
+        return ok, total, correct, wrong
 
-    def _change_quality(original, perturbated, gt):
-        orig_r = original >= thr
-        pert_r = perturbated >= thr
-        gt_r = gt >= thr
+    def _status(pred_r, gt_r, region):
+        s = np.full(gt_r.shape, -1, dtype=np.int8)
+        s[(pred_r ^ gt_r) & region] = 0
+        s[(~pred_r & ~gt_r) & region] = 1
+        s[(pred_r & gt_r) & region] = 2
+        return s
 
-        region = (orig_r | pert_r | gt_r) if union_only else np.ones_like(gt_r, dtype=bool)
+    def _change_quality(base_r, pert_r, gt_r, region):
+        base_status = _status(base_r, gt_r, region)
+        pert_status = _status(pert_r, gt_r, region)
 
-        orig_correct = (orig_r == gt_r) & region
-        pert_correct = (pert_r == gt_r) & region
-
-        changed = (orig_r != pert_r) & region
-
-        changed_to_worse = changed & orig_correct & (~pert_correct)
-        changed_to_better = changed & (~orig_correct) & pert_correct
+        changed = (base_r != pert_r) & region
+        changed_to_worse = changed & (pert_status < base_status)
+        changed_to_better = changed & (pert_status > base_status)
 
         return changed_to_worse, changed_to_better
 
@@ -299,49 +310,84 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, show=F
         ov[wrong] = [1.0, 0.0, 0.0, 0.85]
 
         if changed_bad is not None:
-            ov[changed_bad] = [0.0, 0.0, 0.0, 0.95]
+            ov[changed_bad] = [1.0, 0.6, 0.0, 0.95]
 
         if changed_good is not None:
             ov[changed_good] = [0.0, 0.0, 1.0, 0.95]
 
         ax.imshow(ov, interpolation='nearest')
 
-    ok1, tot1, correct1, wrong1, region1 = _hitmiss(img1, img3)
-    ok2, tot2, correct2, wrong2, region2 = _hitmiss(img2, img3)
+    def _style_axis(ax, x1, x2, y1, y2):
+        ax.set_xlim(x1 - 0.5, x2 + 0.5)
+        ax.set_ylim(y2 + 0.5, y1 - 0.5)
 
-    changed_bad, changed_good = _change_quality(img1, img2, img3)
+        ax.set_xlabel("X (pixels)", fontsize=13)
+        ax.set_ylabel("Y (pixels)", fontsize=13)
 
-    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-    fig.suptitle(f"Channel {c + 1} difference", fontsize=16, fontweight="bold")
+        ax.set_xticks(np.arange(x1 - 0.5, x2 + 1.5, 1), minor=True)
+        ax.set_yticks(np.arange(y1 - 0.5, y2 + 1.5, 1), minor=True)
+
+        ax.grid(False)
+        ax.grid(which="minor", color="black", linestyle="-", linewidth=0.2, alpha=0.35)
+
+        ax.tick_params(
+            axis='both',
+            which='both',
+            bottom=False,
+            left=False,
+            labelbottom=False,
+            labelleft=False
+        )
+
+    base_r = img1 >= thr
+    pert_r = img2 >= thr
+    gt_r = img3 >= thr
+
+    if union_only:
+        region = base_r | pert_r | gt_r
+    else:
+        region = np.ones_like(gt_r, dtype=bool)
+
+    ok1, tot1, correct1, wrong1 = _evaluate(base_r, gt_r, region)
+    ok2, tot2, correct2, wrong2 = _evaluate(pert_r, gt_r, region)
+
+    changed_bad, changed_good = _change_quality(base_r, pert_r, gt_r, region)
+    x1, x2, y1, y2 = __find_best_area(img1, img2, img3, thr=thr, padding=5)
+
+    fig, ax = plt.subplots(1, 3, figsize=(14, 5))
+    fig.subplots_adjust(wspace=0.4)
+    fig.suptitle(f"Channel {c + 1} difference", fontsize=18, fontweight="bold")
 
     im0 = ax[0].imshow(img1, cmap=cmap, norm=norm, interpolation='nearest')
-    ax[0].set_title(f"{name1} ({(ok1 / tot1) * 100:.2f} %)")
-    ax[0].axis("off")
+    ax[0].set_facecolor("lightgray")
+    ax[0].set_title(f"{name1} ({(ok1 / tot1) * 100:.2f} %)" if tot1 > 0 else f"{name1} (0.00 %)", fontsize=16, fontweight="bold")
     _overlay(ax[0], correct1, wrong1)
+    _style_axis(ax[0], x1, x2, y1, y2)
 
     ax[1].imshow(img2, cmap=cmap, norm=norm, interpolation='nearest')
-    ax[1].set_title(f"{name2} ({(ok2 / tot2) * 100:.2f} %)")
-    ax[1].axis("off")
+    ax[1].set_facecolor("lightgray")
+    ax[1].set_title(f"{name2} ({(ok2 / tot2) * 100:.2f} %)" if tot2 > 0 else f"{name2} (0.00 %)", fontsize=16, fontweight="bold")
     _overlay(ax[1], correct2, wrong2, changed_bad, changed_good)
+    _style_axis(ax[1], x1, x2, y1, y2)
 
     ax[2].imshow(img3, cmap=cmap, norm=norm, interpolation='nearest')
-    ax[2].set_title(name3)
-    ax[2].axis("off")
+    ax[2].set_title(name3, fontsize=16, fontweight="bold")
+    _style_axis(ax[2], x1, x2, y1, y2)
 
     legend_handles = [
         Patch(facecolor="red", edgecolor="red", label="Wrong"),
         Patch(facecolor="green", edgecolor="green", label="Correct"),
-        Patch(facecolor="black", edgecolor="black", label="Changed to worse"),
-        Patch(facecolor="blue", edgecolor="blue", label="Changed to better"),
+        Patch(facecolor="orange", edgecolor="orange", label=f"Changed to worse ({int(changed_bad.sum())})"),
+        Patch(facecolor="blue", edgecolor="blue", label=f"Changed to better ({int(changed_good.sum())})"),
     ]
 
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
+        loc="lower left",
         ncol=4,
-        fontsize=10,
+        fontsize=14,
         frameon=True,
-        bbox_to_anchor=(0.5, -0.02)
+        bbox_to_anchor=(0.15, -0.06)
     )
 
     cbar = fig.colorbar(im0, ax=ax, fraction=0.046, pad=0.04)
@@ -353,11 +399,34 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, show=F
         format="svg",
         bbox_inches="tight"
     )
+    plt.close(fig)
 
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+
+def __find_best_area(img1, img2, img3, thr=0.01, padding=5):
+    def _bbox(img):
+        mask = np.asarray(img, dtype=float) >= thr
+        ys, xs = np.where(mask)
+
+        if len(xs) == 0 or len(ys) == 0:
+            h, w = img.shape
+            return 0, w - 1, 0, h - 1
+
+        x1 = max(0, xs.min() - padding)
+        x2 = min(img.shape[1] - 1, xs.max() + padding)
+        y1 = max(0, ys.min() - padding)
+        y2 = min(img.shape[0] - 1, ys.max() + padding)
+        return x1, x2, y1, y2
+
+    b1 = _bbox(img1)
+    b2 = _bbox(img2)
+    b3 = _bbox(img3)
+
+    x1 = min(b1[0], b2[0], b3[0])
+    x2 = max(b1[1], b2[1], b3[1])
+    y1 = min(b1[2], b2[2], b3[2])
+    y2 = max(b1[3], b2[3], b3[3])
+
+    return x1, x2, y1, y2
 
 
 def save_cluster(cluster_output, image, name, title, show=False):
@@ -579,17 +648,19 @@ def save_importance_grid(data, pert_result, file_name, title):
             alpha = np.zeros_like(importance, dtype=float)
             alpha[importance != 0.0] = 1.0
 
+            vis_importance = np.sign(importance) * (np.abs(importance) ** 0.7)
+
             ax.imshow(
                 rgba,
-                alpha=0.1,
+                alpha=0.09,
                 interpolation='nearest',
                 origin='upper',
                 extent=[0, w, 0, h]
             )
 
             im = ax.imshow(
-                importance,
-                cmap="bwr",
+                vis_importance,
+                cmap="RdYlBu_r",
                 vmin=-1.0,
                 vmax=1.0,
                 interpolation='nearest',

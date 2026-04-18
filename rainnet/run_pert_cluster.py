@@ -1,4 +1,5 @@
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -112,7 +113,7 @@ def main():
     x_t = x_t.to(device)
 
     pert = ClusterPerturbation(model, x_t, device, ground_truth)
-    threshold = 0.001
+    threshold = 0.009
     baseline = np.log(0.01)
     rain_thr_log = np.log(0.01 + threshold)
     X1 = np.transpose(X1, (2, 0, 1))
@@ -124,16 +125,17 @@ def main():
     method = "kmeans"
     for i in range(4):
         # DBSCAN:
-        #  clusters.append(pert.cluster_mask_dbscan(masks[i], eps=20.0, min_cluster_size=10))
+        #  clusters.append(pert.cluster_mask_dbscan(masks[i], eps=25.0, min_cluster_size=10))
 
         # KMeans:
-        clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=2))
+        clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=10))
 
         utils.save_cluster(clusters[i], X1[i], f'cluster_{i}', f'DBSCAN clustering of channel {i+1}')
 
         x1, y1, x2, y2 = pert.create_window(clusters[i][1][0], padding=16)
         utils.show_cluster_window(clusters[i], X1[i], x1, y1, x2, y2, f'cluster_window_{i}')
 
+    start_time = time.time()
     importance = pert.perturbate_channels(
         baseline=baseline,
         masks=masks,
@@ -142,6 +144,13 @@ def main():
         loss="accuracy",
         weighted=False
     )
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    minutes = int(elapsed_time // 60)
+    seconds = int(round(elapsed_time % 60))
+
+    print(f"\nProcessing time: {minutes} min {seconds} s")
 
     for i in range(4):
         lowest_base, lowest_pert, lowest_gt = pert.get_lowest(i, masks, baseline=baseline)
@@ -151,7 +160,7 @@ def main():
             lowest_base = utils.invScaler(lowest_base)
             lowest_pert = utils.invScaler(lowest_pert)
             lowest_gt = utils.invScaler(lowest_gt)
-            utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "Lowest base", "Lowest perturbation", "Ground truth"
+            utils.show_trio(i, lowest_base, lowest_pert, lowest_gt, "Base", "Lowest perturbation", "Ground truth"
                             , method, thr=threshold)
 
         highest_base, highest_pert, highest_gt = pert.get_highest(i, masks, baseline=baseline)
@@ -161,7 +170,7 @@ def main():
             highest_base = utils.invScaler(highest_base)
             highest_pert = utils.invScaler(highest_pert)
             highest_gt = utils.invScaler(highest_gt)
-            utils.show_trio(i, highest_base, highest_pert, highest_gt, "Highest base", "Highest perturbation",
+            utils.show_trio(i, highest_base, highest_pert, highest_gt, "Base", "Highest perturbation",
                             "Ground truth", method, thr=threshold)
         if method == "dbscan":
             utils.show_and_save_importance(X1[i], importance[i], f"dbscan_importance_map_{i}",
