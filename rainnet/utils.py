@@ -2,12 +2,44 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.ticker import MultipleLocator
 from wradlib import io as wio
 from pathlib import Path
 import os
 import re
 from matplotlib.patches import Patch
+
+
+importance_boundaries = np.array([-1.0, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 1.0], dtype=float)
+
+importance_colors = [
+    "#08306B",
+    "#2171B5",
+    "#00A651",
+    "#40E0D0",
+    "#7CE8E8",
+    "#FFD60A",
+    "#FF8C00",
+    "#D62828",
+    "#D8B4FE",
+    "#6A0DAD",
+]
+
+importance_tick_positions = (importance_boundaries[:-1] + importance_boundaries[1:]) / 2.0
+importance_tick_labels = [
+    "[-1.0, -0.7)",
+    "[-0.7, -0.5)",
+    "[-0.5, -0.3)",
+    "[-0.3, -0.1)",
+    "[-0.1, 0.0)",
+    "[0.0, 0.1)",
+    "[0.1, 0.3)",
+    "[0.3, 0.5)",
+    "[0.5, 0.7)",
+    "[0.7, 1.0]",
+]
+
+importance_cmap = ListedColormap(importance_colors)
+importance_norm = BoundaryNorm(importance_boundaries, ncolors=importance_cmap.N, clip=True)
 
 
 def parse_ts(fname: str) -> str:
@@ -221,16 +253,17 @@ def show_and_save_importance(image, importance, name, title, show=False):
 
     rgba = cmap(norm(image))
     importance = np.asarray(importance, dtype=float)
+    importance = np.clip(importance, -1.0, 1.0)
     h, w = importance.shape
 
     alpha = np.zeros_like(importance, dtype=float)
-    alpha[importance != 0.0] = 1.0
+    alpha[importance != 0.0] = 0.95
 
     fig, ax = plt.subplots()
 
     ax.imshow(
         rgba,
-        alpha=0.1,
+        alpha=0.08,
         interpolation='nearest',
         origin='upper',
         extent=(0, w, 0, h)
@@ -243,9 +276,8 @@ def show_and_save_importance(image, importance, name, title, show=False):
 
     im = ax.imshow(
         importance,
-        cmap="coolwarm",
-        vmin=-1.0,
-        vmax=1.0,
+        cmap=importance_cmap,
+        norm=importance_norm,
         interpolation='nearest',
         origin='upper',
         extent=(0, w, 0, h)
@@ -257,8 +289,18 @@ def show_and_save_importance(image, importance, name, title, show=False):
     ax.set_xticks(np.arange(0, w + 1, 200))
     ax.set_yticks(np.arange(0, h + 1, 200))
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Importance", fontsize=16)
+    cbar = fig.colorbar(
+        im,
+        ax=ax,
+        fraction=0.046,
+        pad=0.04,
+        boundaries=importance_boundaries,
+        spacing="proportional"
+    )
+    cbar.set_ticks(importance_tick_positions)
+    cbar.set_ticklabels(importance_tick_labels)
+    cbar.set_label("Importance groups", fontsize=16)
+    cbar.ax.tick_params(labelsize=11)
 
     fig.savefig(f"output/clean/{path_method}/{name}.png", bbox_inches="tight", dpi=100)
     fig.savefig(f"output/clean/{path_method}/{name}.svg", bbox_inches="tight", format="svg")
@@ -394,11 +436,20 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, union_
     cbar.set_label("Rain intensity [mm / h]", fontweight="bold")
 
     out_name = f"{name1}_{name2}_{name3}"
+
     fig.savefig(
         f"output/perturbation/{method}/{c}/{out_name}.svg",
         format="svg",
         bbox_inches="tight"
     )
+
+    fig.savefig(
+        f"output/perturbation/{method}/{c}/{out_name}.png",
+        format="png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
     plt.close(fig)
 
 
@@ -644,25 +695,23 @@ def save_importance_grid(data, pert_result, file_name, title):
         if i < C:
             rgba = cmap(norm(frames[i]))
             importance = np.asarray(importances[i], dtype=float)
+            importance = np.clip(importance, -1.0, 1.0)
 
             alpha = np.zeros_like(importance, dtype=float)
-            alpha[importance != 0.0] = 1.0
-
-            vis_importance = np.sign(importance) * (np.abs(importance) ** 0.7)
+            alpha[importance != 0.0] = 0.95
 
             ax.imshow(
                 rgba,
-                alpha=0.09,
+                alpha=0.08,
                 interpolation='nearest',
                 origin='upper',
                 extent=[0, w, 0, h]
             )
 
             im = ax.imshow(
-                vis_importance,
-                cmap="RdYlBu_r",
-                vmin=-1.0,
-                vmax=1.0,
+                importance,
+                cmap=importance_cmap,
+                norm=importance_norm,
                 interpolation='nearest',
                 origin='upper',
                 extent=[0, w, 0, h]
@@ -683,9 +732,18 @@ def save_importance_grid(data, pert_result, file_name, title):
 
     fig.suptitle(title, fontweight="bold", fontsize=18)
 
-    cbar = fig.colorbar(last_im, ax=axes.ravel().tolist(), fraction=0.03, pad=0.08)
-    cbar.set_label("Importance", fontsize=16)
-    cbar.ax.tick_params(labelsize=14)
+    cbar = fig.colorbar(
+        last_im,
+        ax=axes.ravel().tolist(),
+        fraction=0.03,
+        pad=0.08,
+        boundaries=importance_boundaries,
+        spacing="proportional"
+    )
+    cbar.set_ticks(importance_tick_positions)
+    cbar.set_ticklabels(importance_tick_labels)
+    cbar.set_label("Importance groups", fontsize=16)
+    cbar.ax.tick_params(labelsize=11)
 
     fig.tight_layout(rect=(0, 0, 0.88, 0.96))
     fig.savefig(f"output/perturbation/{path_method}/{file_name}.png", bbox_inches="tight", dpi=100)

@@ -36,6 +36,11 @@ class SlidingWindowPerturbation:
 
         whole_counter = 0
 
+        if loss == "BMSE":
+            score_thr = np.exp(thr) - 0.01
+        else:
+            score_thr = thr
+
         print(f"Starting window perturbation for {c} channels")
         for ch in range(c):
             diff_mask = masks[ch]
@@ -67,29 +72,38 @@ class SlidingWindowPerturbation:
                     pert_pred = self.forward(torch.from_numpy(input_copy).to(self.device))
                     pert_pred_mask = pert_pred[y:y2, x:x2]
 
-                    pert_score = loss_f.calculate(pert_pred_mask, gt_mask, thr)
-                    base_score = loss_f.calculate(base_pred_mask, gt_mask, thr)
-                    delta = base_score - pert_score
+                    pert_score = loss_f.calculate(pert_pred_mask, gt_mask, score_thr)
+                    base_score = loss_f.calculate(base_pred_mask, gt_mask, score_thr)
+
+                    if loss == "accuracy":
+                        delta = base_score - pert_score
+                        delta_vis = delta
+                    else:
+                        delta = pert_score - base_score
+                        delta_vis = np.sign(delta) * (np.abs(delta) ** 0.5)
+
+                    if weighted:
+                        mask_cnt = int(win_mask.sum())
+                        if mask_cnt == 0:
+                            continue
+                        delta_to_save = delta * mask_cnt
+                    else:
+                        delta_to_save = delta
+
                     # high delta = perturbation made it worse (important),
                     # low delta = perturbation made it better (noise)
 
                     if np.isnan(pert_score) or np.isnan(base_score):
                         continue
-                    if weighted:
-                        mask_cnt = int(win_mask.sum())
-                        if mask_cnt == 0:
-                            continue
-                        weighted = delta * mask_cnt
-                        self.saveExtreme(ch, weighted, x, y, x2, y2)
-                    else:
-                        self.saveExtreme(ch, delta, x, y, x2, y2)
 
-                    imp_sum[ch, y:y2, x:x2][win_mask] += delta
+                    self.saveExtreme(ch, delta_to_save, x, y, x2, y2)
+
+                    imp_sum[ch, y:y2, x:x2][win_mask] += delta_vis
                     imp_cnt[ch, y:y2, x:x2][win_mask] += 1.0
 
         importance = imp_sum / (imp_cnt + 1e-8)
         support = (imp_cnt > 0) & masks
-        self.normalize_importance(importance, support)
+        self.normalize_importance(importance, support, scope='global')
 
         self.importance = importance
 
@@ -109,8 +123,8 @@ class SlidingWindowPerturbation:
                         result[ch] += 1
         return result
 
-    def normalize_importance(self, importance, support, eps=1e-8, q=97, range='local'):
-        if range == 'local':
+    def normalize_importance(self, importance, support, eps=1e-8, q=97, scope='local'):
+        if scope == 'local':
             self.local_normalize_importance(importance, support, eps, q)
         else:
             self.global_normalize_importance(importance, support, eps, q)

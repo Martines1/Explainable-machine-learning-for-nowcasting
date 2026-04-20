@@ -31,6 +31,12 @@ class ClusterPerturbation:
 
         imp_sum = np.zeros((c, h, w), dtype=np.float32)
         imp_cnt = np.zeros((c, h, w), dtype=np.float32)
+        whole_counter = 0
+
+        if loss == "BMSE":
+            score_thr = np.exp(thr) - 0.01
+        else:
+            score_thr = thr
 
         for ch in range(c):
             label_img, ch_clusters = clusters[ch]
@@ -40,6 +46,7 @@ class ClusterPerturbation:
 
             for pts in ch_clusters:
                 internal_counter += 1
+                whole_counter += 1
                 print(f"Processing channel {ch}, done {(internal_counter / max(total, 1)) * 100:.2f} %")
 
                 x1, y1, x2, y2 = self.create_window(pts, padding=32)
@@ -55,21 +62,33 @@ class ClusterPerturbation:
                 pert_pred = self.forward(torch.from_numpy(input_copy).to(self.device))
                 pert_pred_mask = pert_pred[y1:y2, x1:x2]
 
-                pert_score = loss_f.calculate(pert_pred_mask, gt_mask, thr)
-                base_score = loss_f.calculate(base_pred_mask, gt_mask, thr)
-                delta = base_score - pert_score
-                if weighted:
-                    wdelta = delta * int(len(pts))
-                    self.save_extreme(ch, wdelta, x1, y1, x2, y2, pts)
-                else:
-                    self.save_extreme(ch, delta, x1, y1, x2, y2, pts)
+                pert_score = loss_f.calculate(pert_pred_mask, gt_mask, score_thr)
+                base_score = loss_f.calculate(base_pred_mask, gt_mask, score_thr)
 
-                imp_sum[ch, ys, xs] += delta
+                if not np.isfinite(base_score) or not np.isfinite(pert_score):
+                    continue
+
+                if loss == "accuracy":
+                    delta = base_score - pert_score
+                    delta_vis = delta
+                else:
+                    delta = pert_score - base_score
+                    delta_vis = np.sign(delta) * (np.abs(delta) ** 0.5)
+
+                if weighted:
+                    delta_to_save = delta * int(len(pts))
+                else:
+                    delta_to_save = delta
+                self.save_extreme(ch, delta_to_save, x1, y1, x2, y2, pts)
+
+                imp_sum[ch, ys, xs] += delta_vis
                 imp_cnt[ch, ys, xs] += 1.0
+
         importance = imp_sum / (imp_cnt + 1e-8)
         support = (imp_cnt > 0) & masks
         self.normalize_importance(importance, support, scope='global')
 
+        print(f"Total number of operations: {whole_counter}")
         self.importance = importance
         return importance
 
@@ -204,18 +223,16 @@ class ClusterPerturbation:
         )
         labels = db.fit_predict(coords)
         unique = [lab for lab in np.unique(labels) if lab != -1]
-        print(f"Number of clusters: {len(unique)}")
 
         label_img = np.zeros(mask.shape, dtype=np.int32)
         clusters = []
         for class_id, lab in enumerate(unique, start=1):
             pts = coords[labels == lab]
-            if pts.shape[0] < int(min_cluster_size):
-                continue
 
             label_img[pts[:, 0], pts[:, 1]] = class_id
             clusters.append(pts)
 
+        print(f"Number of clusters: {len(unique)}")
         return label_img, clusters
 
     def cluster_mask_k_means(self, mask, n_clusters=5):

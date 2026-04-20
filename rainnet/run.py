@@ -166,8 +166,18 @@ def main():
     inputs_ts = data_preprocessing(X_raw[:4], scale=False)[0]
     inputs_ts = np.transpose(inputs_ts, (2, 0, 1)).astype("float32")
 
-    scans_for_ts = list(inputs_ts) + [Y_mm.astype("float32")]
-    time_series.time_series.vis_time_series(np.stack(scans_for_ts, axis=0).astype("float32"))
+    last_gt_ts = None
+    if len(file_paths) == 5:
+        gt_ts = data_preprocessing(scans[4][None, ...], scale=False)[0]
+        last_gt_ts = np.transpose(gt_ts, (2, 0, 1)).astype("float32")
+
+    predicted_ts = Y_mm[None, ...].astype("float32")
+
+    time_series.time_series.vis_time_series(
+        gt_data=inputs_ts,
+        last_gt_data=last_gt_ts,
+        predicted_data=predicted_ts
+    )
 
     # Optical Flow part
     # of = OpticalFlow("output/clean/input_0.png", "output/clean/input_3.png", window_size=32, cell=46)

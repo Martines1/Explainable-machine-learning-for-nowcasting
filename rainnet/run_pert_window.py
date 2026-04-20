@@ -145,7 +145,7 @@ def main():
         utils.show_and_save(X1[i], f'Preprocessed input_{i}', f"Preprocessed input #{i + 1}")
 
     start_time = time.time()
-    pert_result = pert.perturbate_channels(baseline, masks, rain_thr_log, "accuracy", weighted=True)
+    pert_result = pert.perturbate_channels(baseline, masks, rain_thr_log, "accuracy", weighted=False)
     end_time = time.time()
     elapsed_time = end_time - start_time
 

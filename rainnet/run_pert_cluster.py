@@ -113,7 +113,7 @@ def main():
     x_t = x_t.to(device)
 
     pert = ClusterPerturbation(model, x_t, device, ground_truth)
-    threshold = 0.009
+    threshold = 0.001
     baseline = np.log(0.01)
     rain_thr_log = np.log(0.01 + threshold)
     X1 = np.transpose(X1, (2, 0, 1))
@@ -122,13 +122,13 @@ def main():
     difference.compare_all(X1, 0.0, 2)
 
     clusters = []
-    method = "kmeans"
+    method = "dbscan"
     for i in range(4):
         # DBSCAN:
-        #  clusters.append(pert.cluster_mask_dbscan(masks[i], eps=25.0, min_cluster_size=10))
+        clusters.append(pert.cluster_mask_dbscan(masks[i], eps=15.0, min_cluster_size=10))
 
         # KMeans:
-        clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=10))
+        #  clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=15))
 
         utils.save_cluster(clusters[i], X1[i], f'cluster_{i}', f'DBSCAN clustering of channel {i+1}')
 
@@ -142,7 +142,7 @@ def main():
         thr=rain_thr_log,
         clusters=clusters,
         loss="accuracy",
-        weighted=False
+        weighted=True
     )
     end_time = time.time()
     elapsed_time = end_time - start_time
