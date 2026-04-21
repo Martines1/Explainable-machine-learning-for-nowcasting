@@ -1,6 +1,4 @@
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
 import numpy as np
 import torch
@@ -73,26 +71,12 @@ def main():
     '''
 
     ground_truth = None
-    if len(file_paths) == 5:
-        current_file = file_paths[4]
-        ts = utils.parse_ts(current_file.name)
 
-        dt = datetime.strptime(ts, "%y%m%d%H%M")
-        pretty = dt.strftime("%d.%m.%Y %H:%M")
-
-        utils.show_and_save(scans[4].astype("float32"), f'Ground truth', title=f'Ground truth {pretty}')
     # X_raw shape (C, H, W)
     X_raw = np.stack(scans, axis=0).astype("float32")
 
     print("X_raw min/max:", np.min(X_raw), np.max(X_raw))
     print("Count of NaN in X_raw: ", np.isnan(X_raw).sum())
-    for count, image in enumerate(X_raw[:4]):
-        current_file = file_paths[count]
-        ts = utils.parse_ts(current_file.name)
-
-        dt = datetime.strptime(ts, "%y%m%d%H%M")
-        pretty = dt.strftime("%d.%m.%Y %H:%M")
-        utils.show_and_save(image, f'Input_{count}', f'Input #{count + 1} - {pretty}')
 
     # data_preprocessing returns (B, H, W, C)
     X = data_preprocessing(X_raw)
@@ -113,7 +97,7 @@ def main():
     x_t = x_t.to(device)
 
     pert = ClusterPerturbation(model, x_t, device, ground_truth)
-    threshold = 0.009
+    threshold = 0.001
     baseline = np.log(0.01)
     rain_thr_log = np.log(0.01 + threshold)
     X1 = np.transpose(X1, (2, 0, 1))
@@ -121,21 +105,16 @@ def main():
 
     difference.compare_all(X1, 0.0, 2)
 
-    clusters = []
-
     loss_functions = ["logcosh", "MSE", "BMSE", "accuracy"]
+    loss_maps = {}
+    c = 0
     for loss_function in loss_functions:
         print(f"Processing with loss {loss_function}")
 
+        clusters = []
         for i in range(4):
             clusters.append(pert.cluster_mask_k_means(masks[i], n_clusters=10))
 
-            utils.save_cluster(clusters[i], X1[i], f'cluster_{i}', f'DBSCAN clustering of channel {i + 1}')
-
-            x1, y1, x2, y2 = pert.create_window(clusters[i][1][0], padding=16)
-            utils.show_cluster_window(clusters[i], X1[i], x1, y1, x2, y2, f'cluster_window_{i}')
-
-        start_time = time.time()
         importance = pert.perturbate_channels(
             baseline=baseline,
             masks=masks,
@@ -144,17 +123,15 @@ def main():
             loss=loss_function,
             weighted=False
         )
-        end_time = time.time()
-        elapsed_time = end_time - start_time
 
-        minutes = int(elapsed_time // 60)
-        seconds = int(round(elapsed_time % 60))
+        loss_maps[loss_function] = importance[c]
 
-        print(f"\nProcessing time: {minutes} min {seconds} s")
-
-        for i in range(4):
-            utils.show_and_save_importance(X1[i], importance[i], f"{loss_function}_kmeans_importance_map_{i}",
-                                           f"Perturbation of channel {i + 1} using K-means clustering. Loss: {loss_function}", False)
+    utils.save_loss_comparison_grid(
+        X1[c],
+        loss_maps,
+        file_name="channel_1_loss_function_comparison",
+        title=f"Loss function comparison for channel {c + 1}",
+    )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,6 @@ import os
 import re
 from matplotlib.patches import Patch
 
-
 importance_boundaries = np.array([-1.0, -0.7, -0.5, -0.3, -0.1, 0.0, 0.1, 0.3, 0.5, 0.7, 1.0], dtype=float)
 
 importance_colors = [
@@ -402,13 +401,15 @@ def show_trio(c, img1, img2, img3, name1, name2, name3, method, thr=0.01, union_
 
     im0 = ax[0].imshow(img1, cmap=cmap, norm=norm, interpolation='nearest')
     ax[0].set_facecolor("lightgray")
-    ax[0].set_title(f"{name1} ({(ok1 / tot1) * 100:.2f} %)" if tot1 > 0 else f"{name1} (0.00 %)", fontsize=16, fontweight="bold")
+    ax[0].set_title(f"{name1} ({(ok1 / tot1) * 100:.2f} %)" if tot1 > 0 else f"{name1} (0.00 %)", fontsize=16,
+                    fontweight="bold")
     _overlay(ax[0], correct1, wrong1)
     _style_axis(ax[0], x1, x2, y1, y2)
 
     ax[1].imshow(img2, cmap=cmap, norm=norm, interpolation='nearest')
     ax[1].set_facecolor("lightgray")
-    ax[1].set_title(f"{name2} ({(ok2 / tot2) * 100:.2f} %)" if tot2 > 0 else f"{name2} (0.00 %)", fontsize=16, fontweight="bold")
+    ax[1].set_title(f"{name2} ({(ok2 / tot2) * 100:.2f} %)" if tot2 > 0 else f"{name2} (0.00 %)", fontsize=16,
+                    fontweight="bold")
     _overlay(ax[1], correct2, wrong2, changed_bad, changed_good)
     _style_axis(ax[1], x1, x2, y1, y2)
 
@@ -748,4 +749,86 @@ def save_importance_grid(data, pert_result, file_name, title):
     fig.tight_layout(rect=(0, 0, 0.88, 0.96))
     fig.savefig(f"output/perturbation/{path_method}/{file_name}.png", bbox_inches="tight", dpi=100)
     fig.savefig(f"output/perturbation/{path_method}/{file_name}.svg", bbox_inches="tight", format="svg")
+    plt.close(fig)
+
+
+def save_loss_comparison_grid(image, importance_maps, file_name="loss_function_comparison", title=None):
+    Path("output").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation").mkdir(parents=True, exist_ok=True)
+    Path("output/perturbation/loss_comparison").mkdir(parents=True, exist_ok=True)
+
+    image = np.asarray(image, dtype=float)
+    h, w = image.shape
+
+    loss_order = ["logcosh", "MSE", "BMSE", "accuracy"]
+    loss_titles = {
+        "logcosh": "LogCosh",
+        "MSE": "MSE",
+        "BMSE": "BMSE",
+        "accuracy": "Accuracy",
+    }
+
+    rgba = cmap(norm(image))
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+    axes_flat = axes.flatten()
+
+    last_im = None
+
+    for ax, loss_name in zip(axes_flat, loss_order):
+        importance = np.asarray(importance_maps[loss_name], dtype=float)
+        importance = np.clip(importance, -1.0, 1.0)
+
+        alpha = np.zeros_like(importance, dtype=float)
+        alpha[importance != 0.0] = 0.95
+
+        ax.imshow(
+            rgba,
+            alpha=0.08,
+            interpolation='nearest',
+            origin='upper',
+            extent=(0, w, 0, h)
+        )
+
+        im = ax.imshow(
+            importance,
+            cmap=importance_cmap,
+            norm=importance_norm,
+            interpolation='nearest',
+            origin='upper',
+            extent=(0, w, 0, h)
+        )
+        im.set_alpha(alpha)
+        last_im = im
+
+        ax.set_title(loss_titles[loss_name], fontweight="bold", fontsize=16)
+        ax.set_xlabel("X (pixels)", fontsize=16)
+        ax.set_ylabel("Y (pixels)", fontsize=16)
+        ax.tick_params(labelsize=14)
+
+        ax.set_xlim(0, w)
+        ax.set_ylim(0, h)
+        ax.set_xticks(np.arange(0, w + 1, 200))
+        ax.set_yticks(np.arange(0, h + 1, 200))
+
+    if title is None:
+        fig.suptitle("Loss function comparison", fontweight="bold", fontsize=18)
+    else:
+        fig.suptitle(title, fontweight="bold", fontsize=18)
+    cbar = fig.colorbar(
+        last_im,
+        ax=axes.ravel().tolist(),
+        fraction=0.03,
+        pad=0.08,
+        boundaries=importance_boundaries,
+        spacing="proportional"
+    )
+    cbar.set_ticks(importance_tick_positions)
+    cbar.set_ticklabels(importance_tick_labels)
+    cbar.set_label("Importance groups", fontsize=16)
+    cbar.ax.tick_params(labelsize=11)
+
+    fig.tight_layout(rect=(0, 0, 0.88, 0.96))
+    fig.savefig(f"output/perturbation/loss_comparison/{file_name}.png", bbox_inches="tight", dpi=100)
+    fig.savefig(f"output/perturbation/loss_comparison/{file_name}.svg", bbox_inches="tight", format="svg")
     plt.close(fig)
